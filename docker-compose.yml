@@ -1,0 +1,48 @@
+services:
+  mocks:
+    image: node:24-alpine
+    working_dir: /demo
+    command: ["node", "app/server.js"]
+    environment:
+      MOCK_HOST: 0.0.0.0
+      MOCK_PORT: 3001
+      MOCK_API_KEY: demo-local-key
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./:/demo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3001/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  n8n:
+    image: n8nio/n8n:1.121.3
+    depends_on:
+      mocks:
+        condition: service_healthy
+    environment:
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      MOCK_BASE_URL: http://mocks:3001
+      MOCK_API_KEY: demo-local-key
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/demo/workflows:ro
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        n8n import:workflow --input=/demo/workflows/error-handler.workflow.json &&
+        n8n import:workflow --input=/demo/workflows/lead-intake.workflow.json &&
+        n8n update:workflow --id=pakvaroLeadIntakeDemo --active=true &&
+        n8n start
+
+volumes:
+  n8n_data:

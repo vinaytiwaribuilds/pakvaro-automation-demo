@@ -1,0 +1,81 @@
+{
+  "id": "pakvaroDemoErrorHandler",
+  "name": "Pakvaro Demo - Workflow Error Handler",
+  "versionId": "19bc6bdb-2b18-4a96-bb4b-1d582120228b",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "Unexpected Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [-420, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const execution = $json.execution || {}; const workflow = $json.workflow || {}; return [{ json: { event: { type: 'unexpected_workflow_error', workflowId: workflow.id || null, workflowName: workflow.name || null, executionId: execution.id || null, executionUrl: execution.url || null, message: execution.error?.message || $json.error?.message || 'Unknown workflow error', lastNodeExecuted: execution.lastNodeExecuted || null } } }];"
+      },
+      "id": "10000000-0000-4000-8000-000000000002",
+      "name": "Shape Error Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-180, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/workflow-errors' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.event }}",
+        "options": {}
+      },
+      "id": "10000000-0000-4000-8000-000000000003",
+      "name": "Record Unexpected Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [60, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $json.workflowError; return [{ json: { alert: { type: 'action_needed', title: 'Unexpected workflow error', severity: 'critical', workflowErrorId: item.workflowErrorId, workflowName: item.workflowName, executionId: item.executionId, message: item.message } } }];"
+      },
+      "id": "10000000-0000-4000-8000-000000000004",
+      "name": "Prepare Error Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.alert }}",
+        "options": {}
+      },
+      "id": "10000000-0000-4000-8000-000000000005",
+      "name": "Alert Workflow Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, 160]
+    }
+  ],
+  "connections": {
+    "Unexpected Workflow Error": { "main": [[{ "node": "Shape Error Event", "type": "main", "index": 0 }]] },
+    "Shape Error Event": { "main": [[{ "node": "Record Unexpected Error", "type": "main", "index": 0 }]] },
+    "Record Unexpected Error": { "main": [[{ "node": "Prepare Error Alert", "type": "main", "index": 0 }]] },
+    "Prepare Error Alert": { "main": [[{ "node": "Alert Workflow Owner", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

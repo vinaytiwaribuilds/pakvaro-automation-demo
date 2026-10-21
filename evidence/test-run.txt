@@ -1,0 +1,9 @@
+Webhook: http://127.0.0.1:5678/webhook/lead-intake
+Mocks:   http://127.0.0.1:3001
+PASS valid lead is normalised, scored, written and alerted
+PASS invalid lead gets clear 400 and creates no side effects
+PASS duplicate idempotency key does not create a second CRM lead
+PASS CRM fails twice, then succeeds on the third attempt
+PASS CRM stays down, so lead is dead-lettered and owner is alerted
+
+Result: 5/5 tests passed

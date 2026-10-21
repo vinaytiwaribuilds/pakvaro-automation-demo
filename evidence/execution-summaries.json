@@ -1,0 +1,74 @@
+{
+  "runAt": "2026-10-21T20:44:42.520Z",
+  "webhookUrl": "http://127.0.0.1:5678/webhook/lead-intake",
+  "result": {
+    "passed": 5,
+    "total": 5
+  },
+  "scenarios": [
+    {
+      "name": "valid lead is normalised, scored, written and alerted",
+      "status": "passed",
+      "httpStatus": 200,
+      "attempts": 1,
+      "duplicate": false,
+      "crmLeads": 1,
+      "alerts": [
+        "lead_owner"
+      ],
+      "followUps": 1,
+      "deadLetters": 0
+    },
+    {
+      "name": "invalid lead gets clear 400 and creates no side effects",
+      "status": "passed",
+      "httpStatus": 400,
+      "error": "VALIDATION_ERROR",
+      "validationErrors": 4,
+      "crmLeads": 0,
+      "alerts": [],
+      "followUps": 0,
+      "deadLetters": 0
+    },
+    {
+      "name": "duplicate idempotency key does not create a second CRM lead",
+      "status": "passed",
+      "firstHttpStatus": 200,
+      "secondHttpStatus": 200,
+      "duplicate": true,
+      "crmLeads": 1,
+      "alerts": [
+        "lead_owner",
+        "lead_owner"
+      ],
+      "followUps": 2,
+      "deadLetters": 0
+    },
+    {
+      "name": "CRM fails twice, then succeeds on the third attempt",
+      "status": "passed",
+      "httpStatus": 200,
+      "attempts": 3,
+      "elapsedMs": 3190,
+      "crmLeads": 1,
+      "alerts": [
+        "lead_owner"
+      ],
+      "followUps": 1,
+      "deadLetters": 0
+    },
+    {
+      "name": "CRM stays down, so lead is dead-lettered and owner is alerted",
+      "status": "passed",
+      "httpStatus": 502,
+      "error": "CRM_WRITE_FAILED",
+      "attempts": 3,
+      "crmLeads": 0,
+      "alerts": [
+        "action_needed"
+      ],
+      "followUps": 0,
+      "deadLetters": 1
+    }
+  ]
+}

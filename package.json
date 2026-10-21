@@ -1,0 +1,14 @@
+{
+  "name": "pakvaro-automation-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local, account-free proof demo for a resilient lead intake workflow in n8n.",
+  "scripts": {
+    "mock": "node app/server.js",
+    "test": "node tests/run-tests.js",
+    "check": "node tests/check-artifacts.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

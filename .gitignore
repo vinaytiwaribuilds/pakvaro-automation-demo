@@ -1,0 +1,9 @@
+.n8n*/
+.npm-cache*/
+.runtime/
+tmp-node-index.json
+app/data/*.jsonl
+app/data/*.json
+!app/data/.gitkeep
+evidence/*.tmp
+npm-debug.log*

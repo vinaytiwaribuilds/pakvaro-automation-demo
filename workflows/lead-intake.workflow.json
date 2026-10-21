@@ -1,0 +1,371 @@
+{
+  "id": "pakvaroLeadIntakeDemo",
+  "name": "Pakvaro Demo - Resilient Lead Intake",
+  "versionId": "6723ca6c-873f-4b22-ad01-95a6c7fd09cc",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Lead Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1280, 160],
+      "webhookId": "24096bcf-2b21-4b9b-8c12-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = $json;\nconst input = envelope.body && typeof envelope.body === 'object' ? envelope.body : envelope;\nconst headers = envelope.headers || {};\nconst errors = [];\nconst clean = (value) => typeof value === 'string' ? value.trim().replace(/\\s+/g, ' ') : '';\nconst name = clean(input.name);\nconst company = clean(input.company);\nconst email = clean(input.email).toLowerCase();\nconst rawPhone = clean(input.phone);\nlet phone = '';\nif (rawPhone) {\n  const hasPlus = rawPhone.startsWith('+');\n  const digits = rawPhone.replace(/\\D/g, '');\n  phone = hasPlus ? `+${digits}` : (digits.length === 10 ? `+91${digits}` : `+${digits}`);\n}\nif (name.length < 2 || name.length > 100) errors.push({ field: 'name', message: 'name must contain 2 to 100 characters' });\nif (company.length > 100) errors.push({ field: 'company', message: 'company must not exceed 100 characters' });\nif (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push({ field: 'email', message: 'email must be a valid address' });\nif (phone && !/^\\+[1-9]\\d{7,14}$/.test(phone)) errors.push({ field: 'phone', message: 'phone must be a valid 8 to 15 digit international number (10 digits defaults to +91)' });\nif (!email && !phone) errors.push({ field: 'contact', message: 'provide at least one valid email or phone' });\nconst budget = input.budget === undefined || input.budget === null || input.budget === '' ? null : Number(input.budget);\nif (budget !== null && (!Number.isFinite(budget) || budget < 0)) errors.push({ field: 'budget', message: 'budget must be a non-negative number' });\nconst timelineDays = input.timelineDays === undefined || input.timelineDays === null || input.timelineDays === '' ? null : Number(input.timelineDays);\nif (timelineDays !== null && (!Number.isInteger(timelineDays) || timelineDays < 1 || timelineDays > 3650)) errors.push({ field: 'timelineDays', message: 'timelineDays must be an integer from 1 to 3650' });\nconst suppliedKey = clean(headers['x-idempotency-key'] || headers['X-Idempotency-Key']);\nif (suppliedKey && !/^[A-Za-z0-9._:-]{8,100}$/.test(suppliedKey)) errors.push({ field: 'x-idempotency-key', message: 'x-idempotency-key must be 8 to 100 URL-safe characters' });\nif (errors.length) return [{ json: { valid: false, response: { ok: false, error: 'VALIDATION_ERROR', message: 'Fix the listed fields and submit again.', details: errors } } }];\nconst identity = `${email}|${phone}|${name.toLowerCase()}`;\nlet h1 = 2166136261, h2 = 2246822519;\nfor (let i = 0; i < identity.length; i++) { h1 = Math.imul(h1 ^ identity.charCodeAt(i), 16777619); h2 = Math.imul(h2 ^ identity.charCodeAt(i), 3266489917); }\nconst generatedKey = `lead-${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`;\nreturn [{ json: { valid: true, idempotencyKey: suppliedKey || generatedKey, lead: { name, company: company || null, email: email || null, phone: phone || null, budget, timelineDays, source: clean(input.source) || 'unknown', message: clean(input.message) || null } } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000002",
+      "name": "Validate and Normalise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1060, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [{ "id": "valid-condition", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000003",
+      "name": "Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-840, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "00000000-0000-4000-8000-000000000004",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-600, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const SCORE_CONFIG = {\n  qualificationThreshold: 50,\n  rules: {\n    companyPresent: 10,\n    businessEmail: 15,\n    phonePresent: 10,\n    budgetAtLeast100000: 30,\n    budgetAtLeast50000: 20,\n    timelineAtMost30Days: 25,\n    timelineAtMost90Days: 15,\n    intentKeyword: 15\n  },\n  consumerEmailDomains: ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com'],\n  intentKeywords: ['automation', 'workflow', 'integration', 'crm', 'lead routing']\n};\nconst lead = $json.lead;\nlet score = 0;\nconst reasons = [];\nconst add = (rule, condition, label) => { if (condition) { score += SCORE_CONFIG.rules[rule]; reasons.push({ rule, points: SCORE_CONFIG.rules[rule], label }); } };\nadd('companyPresent', Boolean(lead.company), 'Company supplied');\nconst domain = lead.email ? lead.email.split('@')[1] : '';\nadd('businessEmail', Boolean(domain) && !SCORE_CONFIG.consumerEmailDomains.includes(domain), 'Business email');\nadd('phonePresent', Boolean(lead.phone), 'Phone supplied');\nadd('budgetAtLeast100000', lead.budget >= 100000, 'Budget at least 100000');\nif (!(lead.budget >= 100000)) add('budgetAtLeast50000', lead.budget >= 50000, 'Budget at least 50000');\nadd('timelineAtMost30Days', lead.timelineDays !== null && lead.timelineDays <= 30, 'Timeline at most 30 days');\nif (!(lead.timelineDays !== null && lead.timelineDays <= 30)) add('timelineAtMost90Days', lead.timelineDays !== null && lead.timelineDays <= 90, 'Timeline at most 90 days');\nconst haystack = `${lead.message || ''} ${lead.source || ''}`.toLowerCase();\nadd('intentKeyword', SCORE_CONFIG.intentKeywords.some((keyword) => haystack.includes(keyword)), 'Automation intent');\nreturn [{ json: { idempotencyKey: $json.idempotencyKey, lead: { ...lead, score, qualification: score >= SCORE_CONFIG.qualificationThreshold ? 'qualified' : 'nurture', scoreReasons: reasons } } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000005",
+      "name": "Score and Qualify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/leads' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.lead }}",
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "00000000-0000-4000-8000-000000000006",
+      "name": "CRM Write Attempt 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-360, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {}; const status = Number($json.statusCode || 0); const lead = body.input || body.record || {}; return [{ json: { success: status >= 200 && status < 300, retryable: status >= 500 || status === 0, crmStatus: status, attempt: 1, lead, idempotencyKey: body.idempotencyKey || lead.idempotencyKey, duplicate: Boolean(body.duplicate), crmId: body.record?.crmId || null, crmError: body.error || null } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000007",
+      "name": "Evaluate CRM Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-120, 60]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "success-one", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000008",
+      "name": "CRM Success 1?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [100, 60]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "retry-one", "leftValue": "={{ $json.retryable }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000009",
+      "name": "Retryable After Attempt 1?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [320, 160]
+    },
+    {
+      "parameters": { "amount": 1 },
+      "id": "00000000-0000-4000-8000-000000000010",
+      "name": "Backoff 1 Second",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [540, 100],
+      "webhookId": "24096bcf-2b21-4b9b-8c12-000000000010"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/leads' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.lead }}",
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "00000000-0000-4000-8000-000000000011",
+      "name": "CRM Write Attempt 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {}; const status = Number($json.statusCode || 0); const lead = body.input || body.record || {}; return [{ json: { success: status >= 200 && status < 300, retryable: status >= 500 || status === 0, crmStatus: status, attempt: 2, lead, idempotencyKey: body.idempotencyKey || lead.idempotencyKey, duplicate: Boolean(body.duplicate), crmId: body.record?.crmId || null, crmError: body.error || null } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000012",
+      "name": "Evaluate CRM Attempt 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 100]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "success-two", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000013",
+      "name": "CRM Success 2?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, 100]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "retry-two", "leftValue": "={{ $json.retryable }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000014",
+      "name": "Retryable After Attempt 2?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1420, 200]
+    },
+    {
+      "parameters": { "amount": 2 },
+      "id": "00000000-0000-4000-8000-000000000015",
+      "name": "Backoff 2 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1640, 140],
+      "webhookId": "24096bcf-2b21-4b9b-8c12-000000000015"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/leads' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.lead }}",
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true } } }
+      },
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "CRM Write Attempt 3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1860, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {}; const status = Number($json.statusCode || 0); const lead = body.input || body.record || {}; return [{ json: { success: status >= 200 && status < 300, retryable: false, crmStatus: status, attempt: 3, lead, idempotencyKey: body.idempotencyKey || lead.idempotencyKey, duplicate: Boolean(body.duplicate), crmId: body.record?.crmId || null, crmError: body.error || null } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000017",
+      "name": "Evaluate CRM Attempt 3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 140]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "success-three", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000018",
+      "name": "CRM Success 3?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2300, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = { ok: true, crmId: $json.crmId, duplicate: $json.duplicate, attempts: $json.attempt, idempotencyKey: $json.idempotencyKey, score: $json.lead.score, qualification: $json.lead.qualification }; return [{ json: { alert: { type: 'lead_owner', title: $json.duplicate ? 'Duplicate lead received' : 'New lead received', idempotencyKey: $json.idempotencyKey, crmId: $json.crmId, score: $json.lead.score, qualification: $json.lead.qualification, workflowResponse: response } } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000019",
+      "name": "Prepare Owner Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2540, -80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.alert }}",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000020",
+      "name": "Alert Lead Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2760, -80]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 200 } },
+      "id": "00000000-0000-4000-8000-000000000021",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2980, -80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/follow-ups' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { type: 'lead_follow_up', title: 'Follow up with lead', dueInHours: 24, idempotencyKey: $json.workflowResponse.idempotencyKey, crmId: $json.workflowResponse.crmId, workflowResponse: $json.workflowResponse } }}",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000027",
+      "name": "Create Follow-up Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2980, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { deadLetter: { reason: 'CRM_WRITE_FAILED', idempotencyKey: $json.idempotencyKey, attempts: $json.attempt, lastStatus: $json.crmStatus, lastError: $json.crmError, lead: $json.lead, replay: { method: 'POST', path: '/webhook/lead-intake', idempotencyKey: $json.idempotencyKey } } } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000022",
+      "name": "Prepare Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.deadLetter }}",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000023",
+      "name": "Record Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2760, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dlq = $json.deadLetter; return [{ json: { alert: { type: 'action_needed', title: 'Lead needs manual CRM action', severity: 'high', deadLetterId: dlq.deadLetterId, idempotencyKey: dlq.idempotencyKey, attempts: dlq.attempts, workflowResponse: $json.workflowResponse } } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000024",
+      "name": "Prepare Action Needed Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2980, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.alert }}",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000025",
+      "name": "Send Action Needed Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3200, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 502 } },
+      "id": "00000000-0000-4000-8000-000000000026",
+      "name": "Respond Dead Lettered",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [3420, 300]
+    }
+  ],
+  "connections": {
+    "Lead Intake Webhook": { "main": [[{ "node": "Validate and Normalise", "type": "main", "index": 0 }]] },
+    "Validate and Normalise": { "main": [[{ "node": "Input Valid?", "type": "main", "index": 0 }]] },
+    "Input Valid?": { "main": [[{ "node": "Score and Qualify", "type": "main", "index": 0 }], [{ "node": "Respond Invalid", "type": "main", "index": 0 }]] },
+    "Score and Qualify": { "main": [[{ "node": "CRM Write Attempt 1", "type": "main", "index": 0 }]] },
+    "CRM Write Attempt 1": { "main": [[{ "node": "Evaluate CRM Attempt 1", "type": "main", "index": 0 }]] },
+    "Evaluate CRM Attempt 1": { "main": [[{ "node": "CRM Success 1?", "type": "main", "index": 0 }]] },
+    "CRM Success 1?": { "main": [[{ "node": "Prepare Owner Alert", "type": "main", "index": 0 }], [{ "node": "Retryable After Attempt 1?", "type": "main", "index": 0 }]] },
+    "Retryable After Attempt 1?": { "main": [[{ "node": "Backoff 1 Second", "type": "main", "index": 0 }], [{ "node": "Prepare Dead Letter", "type": "main", "index": 0 }]] },
+    "Backoff 1 Second": { "main": [[{ "node": "CRM Write Attempt 2", "type": "main", "index": 0 }]] },
+    "CRM Write Attempt 2": { "main": [[{ "node": "Evaluate CRM Attempt 2", "type": "main", "index": 0 }]] },
+    "Evaluate CRM Attempt 2": { "main": [[{ "node": "CRM Success 2?", "type": "main", "index": 0 }]] },
+    "CRM Success 2?": { "main": [[{ "node": "Prepare Owner Alert", "type": "main", "index": 0 }], [{ "node": "Retryable After Attempt 2?", "type": "main", "index": 0 }]] },
+    "Retryable After Attempt 2?": { "main": [[{ "node": "Backoff 2 Seconds", "type": "main", "index": 0 }], [{ "node": "Prepare Dead Letter", "type": "main", "index": 0 }]] },
+    "Backoff 2 Seconds": { "main": [[{ "node": "CRM Write Attempt 3", "type": "main", "index": 0 }]] },
+    "CRM Write Attempt 3": { "main": [[{ "node": "Evaluate CRM Attempt 3", "type": "main", "index": 0 }]] },
+    "Evaluate CRM Attempt 3": { "main": [[{ "node": "CRM Success 3?", "type": "main", "index": 0 }]] },
+    "CRM Success 3?": { "main": [[{ "node": "Prepare Owner Alert", "type": "main", "index": 0 }], [{ "node": "Prepare Dead Letter", "type": "main", "index": 0 }]] },
+    "Prepare Owner Alert": { "main": [[{ "node": "Alert Lead Owner", "type": "main", "index": 0 }]] },
+    "Alert Lead Owner": { "main": [[{ "node": "Create Follow-up Task", "type": "main", "index": 0 }]] },
+    "Create Follow-up Task": { "main": [[{ "node": "Respond Success", "type": "main", "index": 0 }]] },
+    "Prepare Dead Letter": { "main": [[{ "node": "Record Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Dead Letter": { "main": [[{ "node": "Prepare Action Needed Alert", "type": "main", "index": 0 }]] },
+    "Prepare Action Needed Alert": { "main": [[{ "node": "Send Action Needed Alert", "type": "main", "index": 0 }]] },
+    "Send Action Needed Alert": { "main": [[{ "node": "Respond Dead Lettered", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "pakvaroDemoErrorHandler"
+  },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}
