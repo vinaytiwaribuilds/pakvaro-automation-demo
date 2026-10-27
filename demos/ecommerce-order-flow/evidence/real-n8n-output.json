@@ -1,0 +1,72 @@
+{
+  "runAt": "2026-10-26T18:40:01.409Z",
+  "n8nUrl": "http://127.0.0.1:5678",
+  "mockUrl": "http://127.0.0.1:3001",
+  "result": {
+    "passed": 5,
+    "total": 5
+  },
+  "scenarios": [
+    {
+      "name": "valid order creates fulfilment and customer notification",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "orderId": "order-normal-0001",
+        "fulfilmentId": "ful_17469ce2-1932-4e4e-9515-3eefa1c25a51",
+        "idempotencyKey": "order-normal-0001",
+        "remainingStock": 9,
+        "lowStock": false
+      }
+    },
+    {
+      "name": "low remaining quantity sends stock alert",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": true,
+          "orderId": "order-low-0002",
+          "fulfilmentId": "ful_0164cec6-bfa5-4eba-a96a-5f72476e25af",
+          "idempotencyKey": "order-low-0002",
+          "remainingStock": 2,
+          "lowStock": true
+        },
+        "alertType": "low_stock"
+      }
+    },
+    {
+      "name": "duplicate order does not decrement or notify twice",
+      "status": "passed",
+      "output": {
+        "remaining": 2,
+        "fulfilmentRows": 1,
+        "notifications": 1,
+        "lowStockAlerts": 1
+      }
+    },
+    {
+      "name": "customer notification retries after a transient failure",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "orderId": "order-normal-0001",
+        "fulfilmentId": "ful_785568f2-e286-4136-bc30-56be681afa2b",
+        "idempotencyKey": "order-retry-0005",
+        "remainingStock": 9,
+        "lowStock": false
+      }
+    },
+    {
+      "name": "insufficient stock is dead-lettered",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": false,
+          "error": "INSUFFICIENT_STOCK",
+          "idempotencyKey": "order-stockout-03"
+        },
+        "deadLetters": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "runAt": "2026-10-26T18:40:05.149Z",
+  "summary": "Demo suites: 4/4 passed",
+  "results": [
+    {
+      "demo": "missed-enquiry-rescue",
+      "passed": 5,
+      "total": 5
+    },
+    {
+      "demo": "invoice-email-intake",
+      "passed": 5,
+      "total": 5
+    },
+    {
+      "demo": "ecommerce-order-flow",
+      "passed": 5,
+      "total": 5
+    },
+    {
+      "demo": "crm-lead-routing",
+      "passed": 5,
+      "total": 5
+    }
+  ]
+}

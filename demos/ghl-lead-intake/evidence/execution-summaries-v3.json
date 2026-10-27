@@ -1,0 +1,148 @@
+{
+  "runAt": "2026-10-26T18:41:50.730Z",
+  "result": {
+    "passed": 15,
+    "total": 15
+  },
+  "scenarios": [
+    {
+      "name": "valid lead creates one normalised contact, opportunity and owner alert",
+      "status": "passed",
+      "httpStatus": 200,
+      "contacts": 1,
+      "opportunities": 1,
+      "workflowEvidenceTasks": 1,
+      "ownerAlerts": 1,
+      "watchdogStatus": "confirmed"
+    },
+    {
+      "name": "invalid input returns field errors and causes no HighLevel calls",
+      "status": "passed",
+      "httpStatus": 400,
+      "ghlCalls": 0,
+      "fields": [
+        "firstName",
+        "email",
+        "phone"
+      ]
+    },
+    {
+      "name": "exact replay returns the stored result without duplicate writes",
+      "status": "passed",
+      "contacts": 1,
+      "opportunities": 1,
+      "duplicate": true
+    },
+    {
+      "name": "two 429 responses recover on the third contact upsert attempt",
+      "status": "passed",
+      "httpStatus": 200,
+      "attempts": 3,
+      "deadLetters": 0
+    },
+    {
+      "name": "persistent 5xx creates one dead letter and one action-needed alert",
+      "status": "passed",
+      "httpStatus": 502,
+      "attempts": 4,
+      "deadLetters": 1,
+      "actionNeededAlerts": 1
+    },
+    {
+      "name": "authentication failure is surfaced without retry",
+      "status": "passed",
+      "httpStatus": 502,
+      "upstreamStatus": 401,
+      "attempts": 1,
+      "credentialScopeAlerts": 1
+    },
+    {
+      "name": "opportunity is created in the configured pipeline and stage",
+      "status": "passed",
+      "pipelineId": "pipeline_reference_lead_intake",
+      "pipelineStageId": "stage_new_api_intake"
+    },
+    {
+      "name": "ambiguous opportunity create is not repeated or reconciled through search",
+      "status": "passed",
+      "httpStatus": 502,
+      "replayHttpStatus": 502,
+      "opportunities": 1,
+      "opportunityCreateCalls": 1,
+      "postWriteSearches": 0,
+      "duplicatesCreated": 0,
+      "retainedForReview": true
+    },
+    {
+      "name": "read-back after upsert detects a field silently ignored by the API",
+      "status": "passed",
+      "httpStatus": 502,
+      "ignoredField": "source",
+      "mismatchDetected": true,
+      "dataIntegrityAlerts": 1
+    },
+    {
+      "name": "403 scope failure sends one immediate alert without retry and retains the event",
+      "status": "passed",
+      "httpStatus": 502,
+      "upstreamStatus": 403,
+      "attempts": 1,
+      "credentialScopeAlerts": 1,
+      "retainedForReplay": true
+    },
+    {
+      "name": "watchdog alerts and marks the event needs-review when the native workflow is Draft",
+      "status": "passed",
+      "httpStatus": 202,
+      "workflowMode": "draft",
+      "workflowEvidenceTasks": 0,
+      "watchdogAlerts": 1,
+      "ledgerStatus": "needs_review"
+    },
+    {
+      "name": "workflow, state and captured output contain no credential values",
+      "status": "passed",
+      "checked": [
+        "workflow export",
+        "mock state",
+        "captured HTTP responses",
+        "saved evidence"
+      ],
+      "credentialValuesFound": 0
+    },
+    {
+      "name": "camelCase opportunity-search query names receive the live-style 422 response",
+      "status": "passed",
+      "httpStatus": 422,
+      "rejected": [
+        "locationId",
+        "pipelineId",
+        "contactId"
+      ],
+      "required": [
+        "location_id",
+        "pipeline_id",
+        "contact_id"
+      ]
+    },
+    {
+      "name": "duplicate replay during search lag creates no second opportunity",
+      "status": "passed",
+      "httpStatus": 200,
+      "searchLagMs": 10000,
+      "opportunities": 1,
+      "opportunityCreateCalls": 1,
+      "duplicate": true
+    },
+    {
+      "name": "contact and opportunity reads by ID succeed while search remains behind",
+      "status": "passed",
+      "httpStatus": 200,
+      "searchLagMs": 10000,
+      "contactSearchVisible": false,
+      "opportunitySearchVisible": false,
+      "contactIdRead": 200,
+      "opportunityIdRead": 200
+    }
+  ]
+}

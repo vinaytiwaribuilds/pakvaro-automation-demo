@@ -1,0 +1,102 @@
+{
+  "capturedAt": "2026-10-21T21:28:09.495153+00:00",
+  "source": "local n8n SQLite execution_entity",
+  "n8nDatabase": "[local n8n database path redacted]",
+  "latestPassingSuiteExpectedExecutions": 10,
+  "workflowExecutionCounts": {
+    "pakvaroCrmLeadRouting": 9,
+    "pakvaroCrmDailySummary": 1
+  },
+  "executions": [
+    {
+      "id": 19,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.050",
+      "stoppedAt": "2026-10-21 21:28:00.168",
+      "finished": 1
+    },
+    {
+      "id": 20,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.233",
+      "stoppedAt": "2026-10-21 21:28:00.317",
+      "finished": 1
+    },
+    {
+      "id": 21,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.372",
+      "stoppedAt": "2026-10-21 21:28:00.428",
+      "finished": 1
+    },
+    {
+      "id": 22,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.481",
+      "stoppedAt": "2026-10-21 21:28:00.532",
+      "finished": 1
+    },
+    {
+      "id": 23,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.587",
+      "stoppedAt": "2026-10-21 21:28:00.639",
+      "finished": 1
+    },
+    {
+      "id": 24,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.698",
+      "stoppedAt": "2026-10-21 21:28:00.754",
+      "finished": 1
+    },
+    {
+      "id": 25,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.811",
+      "stoppedAt": "2026-10-21 21:28:00.872",
+      "finished": 1
+    },
+    {
+      "id": 26,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:00.924",
+      "stoppedAt": "2026-10-21 21:28:00.973",
+      "finished": 1
+    },
+    {
+      "id": 27,
+      "workflowId": "pakvaroCrmDailySummary",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:01.035",
+      "stoppedAt": "2026-10-21 21:28:01.084",
+      "finished": 1
+    },
+    {
+      "id": 28,
+      "workflowId": "pakvaroCrmLeadRouting",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:28:01.154",
+      "stoppedAt": "2026-10-21 21:28:01.172",
+      "finished": 1
+    }
+  ]
+}

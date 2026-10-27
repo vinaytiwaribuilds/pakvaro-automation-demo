@@ -1,0 +1,10 @@
+Demo: invoice-email-intake
+n8n: http://127.0.0.1:5678
+Mocks: http://127.0.0.1:3001
+PASS CSV attachment is parsed and appended
+PASS PDF attachment is parsed and high amount is flagged
+PASS same vendor and invoice number is flagged as duplicate
+PASS sheet write retries after a transient failure
+PASS unparseable attachment is dead-lettered
+
+Result: 5/5 tests passed

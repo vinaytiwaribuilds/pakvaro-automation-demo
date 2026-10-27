@@ -69,7 +69,7 @@ test('valid lead is normalised, scored, written and alerted', async () => {
   const snapshot = await state();
   assert.equal(snapshot.leads.length, 1);
   assert.equal(snapshot.leads[0].email, 'aarav@northstar.example');
-  assert.equal(snapshot.leads[0].phone, '+919876543210');
+  assert.equal(snapshot.leads[0].phone, '+12125550101');
   assert.equal(snapshot.leads[0].qualification, 'qualified');
   assert.equal(snapshot.alerts.length, 1);
   assert.equal(snapshot.alerts[0].type, 'lead_owner');

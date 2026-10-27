@@ -1,0 +1,683 @@
+{
+  "id": "pakvaroGhlLeadIntake",
+  "name": "Pakvaro Reference - Resilient GHL Lead Intake",
+  "versionId": "64000000-0000-4000-8000-000000000002",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ghl-lead-intake",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "64000000-0000-4000-8000-000000000001",
+      "name": "Signed Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        160
+      ],
+      "webhookId": "64000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst item = $input.first();\nconst envelope = item.json || {};\nconst headers = envelope.headers || {};\nconst rawBase64 = item.binary && item.binary.data && item.binary.data.data;\nconst raw = rawBase64 ? Buffer.from(rawBase64, 'base64').toString('utf8') : JSON.stringify(envelope.body || {});\nconst eventId = String(headers['x-event-id'] || '').trim();\nconst timestamp = String(headers['x-event-timestamp'] || '').trim();\nconst supplied = String(headers['x-pakvaro-signature'] || '').trim();\nconst secret = $env.INTAKE_WEBHOOK_SECRET || '';\nconst reject = (httpStatus, error, message, details = []) => [{ json: { continueProcessing: false, httpStatus, response: { ok: false, error, message, details } } }];\nif (!eventId || !timestamp || !supplied || !secret) return reject(401, 'SIGNATURE_INVALID', 'Missing signed-webhook metadata');\nconst age = Math.abs(Date.now() - Date.parse(timestamp));\nif (!Number.isFinite(age) || age > 300000) return reject(401, 'SIGNATURE_INVALID', 'Timestamp is outside the five-minute window');\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nconst left = Buffer.from(supplied); const right = Buffer.from(expected);\nif (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return reject(401, 'SIGNATURE_INVALID', 'Signature verification failed');\nlet body; try { body = JSON.parse(raw); } catch { return reject(400, 'INVALID_JSON', 'Request body must be JSON'); }\nconst allowed = new Set(['firstName','name','lastName','email','phone','fixtureCountry','companyName','source','message']);\nconst details = [];\nfor (const key of Object.keys(body)) if (!allowed.has(key)) details.push({ field: key, message: 'unknown field' });\nconst clean = value => typeof value === 'string' ? value.trim() : '';\nconst firstName = clean(body.firstName) || clean(body.name);\nconst lastName = clean(body.lastName);\nconst email = clean(body.email).toLowerCase();\nlet phone = clean(body.phone).replace(/[\\s()-]/g, '');\nif (phone && !phone.startsWith('+') && clean(body.fixtureCountry) === 'US' && /^\\d{10}$/.test(phone)) phone = '+1' + phone;\nif (!firstName) details.push({ field: 'firstName', message: 'firstName or name is required' });\nif (!email && !phone) details.push({ field: 'identity', message: 'email or phone is required' });\nif (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) details.push({ field: 'email', message: 'valid email required' });\nif (phone && !/^\\+[1-9]\\d{7,14}$/.test(phone)) details.push({ field: 'phone', message: 'phone must use E.164 format or an explicit fixtureCountry rule' });\nif (details.length) return reject(400, 'VALIDATION_ERROR', 'Lead failed validation', details);\nconst lead = { firstName, lastName, email: email || null, phone: phone || null, companyName: clean(body.companyName), source: clean(body.source), message: clean(body.message) };\nreturn [{ json: { continueProcessing: true, eventId, payloadHash: 'sha256:' + crypto.createHash('sha256').update(raw).digest('hex'), lead } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000002",
+      "name": "Verify Signature, Validate and Normalise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1060,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "continue",
+              "leftValue": "={{ $json.continueProcessing }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000003",
+      "name": "Input Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -840,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      },
+      "id": "64000000-0000-4000-8000-000000000004",
+      "name": "Respond Rejected or Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -600,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http'); const https = require('https'); const { URL } = require('url');\nconst input = $input.first().json;\nconst ghlBase = $env.GHL_BASE_URL || 'http://127.0.0.1:3011';\nconst stateBase = $env.STATE_BASE_URL || 'http://127.0.0.1:3011';\nconst token = $env.GHL_PIT || $env.GHL_PRIVATE_INTEGRATION_TOKEN || '';\nconst locationId = $env.GHL_LOCATION_ID || '';\nconst baseDelay = Number($env.GHL_RETRY_BASE_MS || '2000');\nfunction request(method, target, body, ghl = false) { return new Promise((resolve, reject) => { const url = new URL(target); const data = body === undefined ? null : JSON.stringify(body); const headers = ghl ? { Authorization: 'Bearer ' + token, Version: '2021-07-28', Accept: 'application/json' } : { Accept: 'application/json' }; if (data) headers['Content-Type'] = 'application/json'; const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers }, res => { const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => { const raw = Buffer.concat(chunks).toString('utf8'); let parsed = null; try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = { message: 'Non-JSON response' }; } resolve({ status: res.statusCode || 0, body: parsed, headers: res.headers }); }); }); req.on('error', reject); if (data) req.write(data); req.end(); }); }\nconst sleep = ms => new Promise(resolve => setTimeout(resolve, ms));\nconst fail = (error, step, attempts, lastStatus, contactId = null) => ({ contactReady: false, early: false, deadLetter: { eventId: input.eventId, payloadHash: input.payloadHash, failingStep: step, attempts, lastStatus, errorClass: error, contactId, opportunityId: null, firstFailureAt: new Date().toISOString(), lastFailureAt: new Date().toISOString(), safeNextAction: 'Confirm the dependency is healthy, inspect the ledger, then replay the same event ID from the first unconfirmed step.', workflowResponse: { ok: false, error, eventId: input.eventId, attempts, lastStatus } } });\nconst claim = await request('POST', stateBase + '/state/claim', { eventId: input.eventId, payloadHash: input.payloadHash });\nif (claim.status === 409) return [{ json: fail('EVENT_ID_PAYLOAD_CONFLICT', 'idempotency_claim', 1, 409) }];\nif (claim.body && claim.body.claim === 'completed') return [{ json: { contactReady: false, early: true, httpStatus: 200, response: { ...claim.body.result, duplicate: true } } }];\nconst idempotencyLedger = claim.body && claim.body.ledger ? claim.body.ledger : null;\nlet emailContact = null; let phoneContact = null;\nfor (const field of ['email','phone']) { const value = input.lead[field]; if (!value) continue; const lookup = await request('GET', ghlBase + '/contacts/lookup?locationId=' + encodeURIComponent(locationId) + '&' + field + '=' + encodeURIComponent(value), undefined, true); if (lookup.status === 200) { if (field === 'email') emailContact = lookup.body.contact; else phoneContact = lookup.body.contact; continue; } if (lookup.status === 404) continue; const error = lookup.status === 401 || lookup.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : lookup.status === 422 ? 'GHL_VALIDATION_FAILED' : 'GHL_LOOKUP_FAILED'; return [{ json: fail(error, 'contact_lookup', 1, lookup.status) }]; }\nif (emailContact && phoneContact && emailContact.id !== phoneContact.id) return [{ json: fail('CONTACT_IDENTITY_CONFLICT', 'contact_identity_check', 1, 409) }];\nconst payload = { locationId, firstName: input.lead.firstName, lastName: input.lead.lastName, email: input.lead.email, phone: input.lead.phone, companyName: input.lead.companyName, source: input.lead.source, createNewIfDuplicateAllowed: false };\nlet response; let attempts = 0;\nwhile (attempts < 4) { attempts += 1; response = await request('POST', ghlBase + '/contacts/upsert', payload, true); if (response.status >= 200 && response.status < 300) break; if (![429,500,502,503,504].includes(response.status)) { const error = response.status === 401 || response.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : response.status === 422 ? 'GHL_VALIDATION_FAILED' : 'GHL_CONTACT_UPSERT_FAILED'; return [{ json: fail(error, 'contact_upsert', attempts, response.status) }]; } if (attempts < 4) { const retryAfter = Number(response.headers['retry-after']); const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * (2 ** (attempts - 1)); await sleep(delay); } }\nif (!response || response.status < 200 || response.status >= 300) return [{ json: fail('GHL_CONTACT_UPSERT_EXHAUSTED', 'contact_upsert', attempts, response ? response.status : 0) }];\nconst contact = response.body.contact;\nawait request('POST', stateBase + '/state/checkpoint', { eventId: input.eventId, patch: { status: 'contact_confirmed', contactId: contact.id, attempts, lastStatus: response.status } });\nreturn [{ json: { contactReady: true, early: false, eventId: input.eventId, payloadHash: input.payloadHash, lead: input.lead, contact, contactNew: response.body.new === true, contactAttempts: attempts, idempotencyLedger } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000005",
+      "name": "Identity Check and GHL Contact Upsert with Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "contact-ready",
+              "leftValue": "={{ $json.contactReady }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000006",
+      "name": "Contact Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -360,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "early",
+              "leftValue": "={{ $json.early }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000007",
+      "name": "Stored Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http'); const https = require('https'); const { URL } = require('url');\nconst input = $input.first().json;\nconst ghlBase = $env.GHL_BASE_URL || 'http://127.0.0.1:3011'; const stateBase = $env.STATE_BASE_URL || 'http://127.0.0.1:3011';\nconst token = $env.GHL_PIT || $env.GHL_PRIVATE_INTEGRATION_TOKEN || ''; const locationId = $env.GHL_LOCATION_ID || ''; const pipelineId = $env.GHL_PIPELINE_ID || ''; const stageId = $env.GHL_PIPELINE_STAGE_ID || ''; const baseDelay = Number($env.GHL_RETRY_BASE_MS || '2000');\nfunction request(method, target, body, ghl = false) { return new Promise((resolve, reject) => { const url = new URL(target); const data = body === undefined ? null : JSON.stringify(body); const headers = ghl ? { Authorization: 'Bearer ' + token, Version: '2021-07-28', Accept: 'application/json' } : { Accept: 'application/json' }; if (data) headers['Content-Type'] = 'application/json'; const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers }, res => { const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => { const raw = Buffer.concat(chunks).toString('utf8'); let parsed = null; try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = { message: 'Non-JSON response' }; } resolve({ status: res.statusCode || 0, body: parsed, headers: res.headers }); }); }); req.on('error', reject); if (data) req.write(data); req.end(); }); }\nconst sleep = ms => new Promise(resolve => setTimeout(resolve, ms));\nconst fail = (error, step, attempts, lastStatus, opportunityId = null, safeNextAction = 'Inspect the idempotency ledger and the contact before retrying any opportunity write.') => ({ opportunityReady: false, deadLetter: { eventId: input.eventId, payloadHash: input.payloadHash, failingStep: step, attempts, lastStatus, errorClass: error, contactId: input.contact.id, opportunityId, firstFailureAt: new Date().toISOString(), lastFailureAt: new Date().toISOString(), safeNextAction, workflowResponse: { ok: false, error, eventId: input.eventId, attempts, lastStatus } } });\nasync function search() { return request('GET', ghlBase + '/opportunities/search?location_id=' + encodeURIComponent(locationId) + '&pipeline_id=' + encodeURIComponent(pipelineId) + '&contact_id=' + encodeURIComponent(input.contact.id) + '&status=open&limit=20', undefined, true); }\nasync function readById(opportunityId) { return request('GET', ghlBase + '/opportunities/' + encodeURIComponent(opportunityId), undefined, true); }\nfunction matches(found) { return found && found.status === 200 ? (found.body.opportunities || []) : []; }\nfunction validOpportunity(opportunity) { return opportunity && opportunity.contactId === input.contact.id && opportunity.pipelineId === pipelineId && opportunity.status === 'open'; }\nlet opportunity = null; let created = false; let attempts = 0; let lastStatus = 200;\nconst claimedOpportunityId = input.idempotencyLedger && input.idempotencyLedger.opportunityId;\nconst resumedWithoutOpportunityId = input.idempotencyLedger && input.idempotencyLedger.status !== 'received' && !claimedOpportunityId;\nif (resumedWithoutOpportunityId && input.contactNew !== true) return [{ json: fail('GHL_OPPORTUNITY_WRITE_UNCONFIRMED', 'opportunity_duplicate_guard', 1, input.idempotencyLedger.lastStatus || 0, null, 'This event was already in progress and has no confirmed opportunity ID. Do not use search as read-after-write proof and do not create again; review the retained event.') }];\nif (claimedOpportunityId) {\n  const claimedRead = await readById(claimedOpportunityId);\n  if (claimedRead.status !== 200 || !validOpportunity(claimedRead.body && claimedRead.body.opportunity)) return [{ json: fail(claimedRead.status === 401 || claimedRead.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : 'GHL_IDEMPOTENCY_OPPORTUNITY_READ_FAILED', 'opportunity_id_readback', 1, claimedRead.status, claimedOpportunityId) }];\n  opportunity = claimedRead.body.opportunity;\n}\nif (!opportunity) {\n  const found = await search();\n  if (found.status !== 200) return [{ json: fail(found.status === 401 || found.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : 'GHL_OPPORTUNITY_SEARCH_FAILED', 'opportunity_search', 1, found.status) }];\n  if (matches(found).length > 1) return [{ json: fail('MULTIPLE_OPEN_OPPORTUNITIES', 'opportunity_duplicate_check', 1, 409) }];\n  opportunity = matches(found)[0] || null;\n}\nif (!opportunity && input.contactNew !== true) return [{ json: fail('GHL_OPPORTUNITY_SEARCH_EVENTUALLY_CONSISTENT', 'opportunity_duplicate_guard', 1, 200, null, 'The contact already existed, so an empty search result is not proof that no opportunity exists. Wait for indexing or review by ID before creating anything.') }];\nconst payload = { locationId, pipelineId, pipelineStageId: stageId, contactId: input.contact.id, name: input.lead.firstName + ' ' + (input.lead.lastName || '') + ' - Reference Intake', status: 'open' };\nwhile (!opportunity && attempts < 4) {\n  attempts += 1;\n  const response = await request('POST', ghlBase + '/opportunities/', payload, true);\n  lastStatus = response.status;\n  if (response.status === 401 || response.status === 403) return [{ json: fail('GHL_AUTH_OR_SCOPE_FAILED', 'opportunity_create', attempts, response.status) }];\n  if (response.status === 429) { if (attempts < 4) { const retryAfter = Number(response.headers['retry-after']); const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * (2 ** (attempts - 1)); await sleep(delay); continue; } break; }\n  const returnedId = response.body && response.body.opportunity && response.body.opportunity.id;\n  if (response.status >= 200 && response.status < 300 && !returnedId) return [{ json: fail('GHL_OPPORTUNITY_ID_MISSING', 'opportunity_create', attempts, response.status) }];\n  if (returnedId) {\n    const readBack = await readById(returnedId);\n    if (readBack.status === 200 && validOpportunity(readBack.body && readBack.body.opportunity)) { opportunity = readBack.body.opportunity; created = true; break; }\n    return [{ json: fail(readBack.status === 401 || readBack.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : 'GHL_OPPORTUNITY_READBACK_FAILED', 'opportunity_id_readback', attempts, readBack.status, returnedId, 'Read the returned opportunity ID and confirm its contact, pipeline and status before replaying.') }];\n  }\n  if ([500,502,503,504].includes(response.status)) return [{ json: fail('GHL_OPPORTUNITY_WRITE_UNCONFIRMED', 'opportunity_create', attempts, response.status, null, 'The create outcome is unknown and no ID was returned. Do not create again; inspect the ledger and wait for the search index or review in HighLevel.') }];\n  return [{ json: fail(response.status === 422 ? 'GHL_VALIDATION_FAILED' : 'GHL_OPPORTUNITY_CREATE_FAILED', 'opportunity_create', attempts, response.status) }];\n}\nif (!opportunity) return [{ json: fail('GHL_OPPORTUNITY_CREATE_EXHAUSTED', 'opportunity_create', attempts, lastStatus) }];\nconst result = { ok: true, eventId: input.eventId, contactId: input.contact.id, opportunityId: opportunity.id, contactNew: input.contactNew, opportunityCreated: created, contactAttempts: input.contactAttempts, opportunityAttempts: attempts, pipelineId, pipelineStageId: opportunity.pipelineStageId || stageId, duplicate: false };\nawait request('POST', stateBase + '/state/checkpoint', { eventId: input.eventId, patch: { status: 'opportunity_confirmed', opportunityId: opportunity.id, attempts: input.contactAttempts + attempts, lastStatus } });\nreturn [{ json: { opportunityReady: true, eventId: input.eventId, result } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000008",
+      "name": "GHL Opportunity Search, Create and ID Read-back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "opportunity-ready",
+              "leftValue": "={{ $json.opportunityReady }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000009",
+      "name": "Opportunity Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        120,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.OWNER_ALERT_URL || (($env.STATE_BASE_URL || 'http://127.0.0.1:3011') + '/state/alerts')) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { type: 'lead_owner', eventId: $json.eventId, title: 'Synthetic lead intake completed', contactId: $json.result.contactId, opportunityId: $json.result.opportunityId, workflowResponse: $json.result } }}",
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000010",
+      "name": "Owner Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.STATE_BASE_URL || 'http://127.0.0.1:3011') + '/state/complete' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { eventId: $json.alert.eventId, result: $json.workflowResponse } }}",
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000011",
+      "name": "Complete Idempotency Ledger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.workflowResponse }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "64000000-0000-4000-8000-000000000012",
+      "name": "Respond Completed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1300,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.STATE_BASE_URL || 'http://127.0.0.1:3011') + '/state/dead-letters' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.deadLetter }}",
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000013",
+      "name": "Record Safe Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.OWNER_ALERT_URL || (($env.STATE_BASE_URL || 'http://127.0.0.1:3011') + '/state/alerts')) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { type: $json.deadLetter.alertType || 'action_needed', eventId: $json.deadLetter.eventId, title: $json.deadLetter.alertTitle || 'GHL intake needs action', deadLetterId: $json.deadLetter.id, failingStep: $json.deadLetter.failingStep, lastStatus: $json.deadLetter.lastStatus, safeNextAction: $json.deadLetter.safeNextAction, workflowResponse: $json.workflowResponse } }}",
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000014",
+      "name": "Action Needed Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.workflowResponse }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "64000000-0000-4000-8000-000000000015",
+      "name": "Respond Dependency Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1080,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http'); const https = require('https'); const { URL } = require('url');\nconst input = $input.first().json;\nconst ghlBase = $env.GHL_BASE_URL || 'http://127.0.0.1:3011';\nconst token = $env.GHL_PIT || $env.GHL_PRIVATE_INTEGRATION_TOKEN || '';\nfunction request(method, target) { return new Promise((resolve, reject) => { const url = new URL(target); const headers = { Authorization: 'Bearer ' + token, Version: '2021-07-28', Accept: 'application/json' }; const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers }, res => { const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => { const raw = Buffer.concat(chunks).toString('utf8'); let parsed = null; try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = { message: 'Non-JSON response' }; } resolve({ status: res.statusCode || 0, body: parsed }); }); }); req.on('error', reject); req.end(); }); }\nconst fail = (error, lastStatus, safeNextAction) => ({ readBackReady: false, deadLetter: { eventId: input.eventId, payloadHash: input.payloadHash, failingStep: 'contact_readback', attempts: input.contactAttempts, lastStatus, errorClass: error, contactId: input.contact.id, opportunityId: null, firstFailureAt: new Date().toISOString(), lastFailureAt: new Date().toISOString(), safeNextAction, workflowResponse: { ok: false, error, eventId: input.eventId, attempts: input.contactAttempts, lastStatus } } });\nconst response = await request('GET', ghlBase + '/contacts/' + encodeURIComponent(input.contact.id));\nif (response.status !== 200) return [{ json: fail(response.status === 401 || response.status === 403 ? 'GHL_AUTH_OR_SCOPE_FAILED' : 'GHL_CONTACT_READBACK_FAILED', response.status, 'Restore the required contact scopes, then read the stored contact before replaying the event.') }];\nconst stored = response.body && response.body.contact ? response.body.contact : {};\nconst expected = { firstName: input.lead.firstName, lastName: input.lead.lastName || '', email: input.lead.email || null, phone: input.lead.phone || null, companyName: input.lead.companyName || '', source: input.lead.source || '' };\nconst comparable = value => value === null || value === undefined ? '' : String(value);\nconst mismatches = Object.keys(expected).filter(field => comparable(stored[field]) !== comparable(expected[field]));\nif (mismatches.length) { const failed = fail('GHL_CONTACT_READBACK_MISMATCH', response.status, 'Inspect the mismatched fields and the HighLevel field rules. Do not report the lead as completed.'); failed.deadLetter.mismatchedFields = mismatches; return [{ json: failed }]; }\nreturn [{ json: { ...input, readBackReady: true, contact: stored } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000016",
+      "name": "Read Back and Verify Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "readback-ready",
+              "leftValue": "={{ $json.readBackReady }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000017",
+      "name": "Contact Read-back Confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst deadLetter = { ...input.deadLetter, workflowResponse: { ...(input.deadLetter && input.deadLetter.workflowResponse ? input.deadLetter.workflowResponse : {}) } };\nif (deadLetter.lastStatus === 401 || deadLetter.lastStatus === 403 || deadLetter.errorClass === 'GHL_AUTH_OR_SCOPE_FAILED' || deadLetter.errorClass === 'GHL_AUTH_FAILED') {\n  deadLetter.errorClass = 'GHL_AUTH_OR_SCOPE_FAILED';\n  deadLetter.workflowResponse.error = 'GHL_AUTH_OR_SCOPE_FAILED';\n  deadLetter.safeNextAction = 'Restore the token or required scopes, then replay the retained event from its first unconfirmed step.';\n  deadLetter.alertType = 'credential_scope';\n  deadLetter.alertTitle = 'GHL credential or scope problem';\n} else if (deadLetter.errorClass === 'GHL_CONTACT_READBACK_MISMATCH') {\n  deadLetter.alertType = 'data_integrity';\n  deadLetter.alertTitle = 'GHL contact read-back mismatch';\n} else {\n  deadLetter.alertType = 'action_needed';\n  deadLetter.alertTitle = 'GHL intake needs action';\n}\nreturn [{ json: { ...input, deadLetter } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000018",
+      "name": "Classify Immediate Failure Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = require('http'); const https = require('https'); const { URL } = require('url');\nconst input = $input.first().json;\nconst ghlBase = $env.GHL_BASE_URL || 'http://127.0.0.1:3011'; const stateBase = $env.STATE_BASE_URL || 'http://127.0.0.1:3011'; const alertBase = $env.OWNER_ALERT_URL || stateBase + '/state/alerts';\nconst token = $env.GHL_PIT || $env.GHL_PRIVATE_INTEGRATION_TOKEN || ''; const windowMs = Math.max(0, Number($env.GHL_WATCHDOG_WINDOW_MS || '30000')); const pollMs = Math.max(1, Number($env.GHL_WATCHDOG_POLL_MS || '2000'));\nfunction request(method, target, body, ghl = false) { return new Promise((resolve, reject) => { const url = new URL(target); const data = body === undefined ? null : JSON.stringify(body); const headers = ghl ? { Authorization: 'Bearer ' + token, Version: '2021-07-28', Accept: 'application/json' } : { Accept: 'application/json' }; if (data) headers['Content-Type'] = 'application/json'; const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers }, res => { const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => { const raw = Buffer.concat(chunks).toString('utf8'); let parsed = null; try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = { message: 'Non-JSON response' }; } resolve({ status: res.statusCode || 0, body: parsed }); }); }); req.on('error', reject); if (data) req.write(data); req.end(); }); }\nconst sleep = ms => new Promise(resolve => setTimeout(resolve, ms));\nconst maxReads = Math.max(1, Math.floor(windowMs / pollMs) + 1);\nlet evidenceTask = null; let lastStatus = 0;\nfor (let attempt = 1; attempt <= maxReads; attempt += 1) {\n  const response = await request('GET', ghlBase + '/contacts/' + encodeURIComponent(input.result.contactId) + '/tasks', undefined, true);\n  lastStatus = response.status;\n  if (response.status === 200) evidenceTask = (response.body.tasks || []).find(task => task.title === 'Native workflow evidence') || null;\n  if (evidenceTask) break;\n  if (response.status === 401 || response.status === 403) break;\n  if (attempt < maxReads) await sleep(pollMs);\n}\nif (evidenceTask) return [{ json: { watchdogPassed: true, eventId: input.eventId, result: { ...input.result, watchdogStatus: 'confirmed', workflowEvidenceTaskId: evidenceTask.id } } }];\nconst authFailure = lastStatus === 401 || lastStatus === 403;\nconst response = { ...input.result, ok: false, error: authFailure ? 'GHL_AUTH_OR_SCOPE_FAILED' : 'GHL_NATIVE_WORKFLOW_MISSING', watchdogStatus: 'needs_review' };\nawait request('POST', alertBase, { type: authFailure ? 'credential_scope' : 'workflow_watchdog', eventId: input.eventId, title: authFailure ? 'GHL credential or scope problem' : 'GHL workflow did not run - check if it was set to Draft', contactId: input.result.contactId, opportunityId: input.result.opportunityId, checklist: authFailure ? ['Token valid?', 'Required contact and task scopes granted?'] : ['Workflow published, not Draft?', 'Filters matched?', 'Re-entry enabled when required?', 'Wallet and messaging prerequisites healthy?'], workflowResponse: response });\nawait request('POST', stateBase + '/state/checkpoint', { eventId: input.eventId, patch: { status: 'needs_review', watchdogStatus: 'missing', lastStatus } });\nreturn [{ json: { watchdogPassed: false, eventId: input.eventId, httpStatus: 202, response } }];"
+      },
+      "id": "64000000-0000-4000-8000-000000000019",
+      "name": "Native Workflow Watchdog",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "watchdog-passed",
+              "leftValue": "={{ $json.watchdogPassed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64000000-0000-4000-8000-000000000020",
+      "name": "Native Workflow Evidence Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      },
+      "id": "64000000-0000-4000-8000-000000000021",
+      "name": "Respond Needs Review",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        820,
+        -60
+      ]
+    }
+  ],
+  "connections": {
+    "Signed Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature, Validate and Normalise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature, Validate and Normalise": {
+      "main": [
+        [
+          {
+            "node": "Input Accepted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Accepted?": {
+      "main": [
+        [
+          {
+            "node": "Identity Check and GHL Contact Upsert with Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Rejected or Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identity Check and GHL Contact Upsert with Retry": {
+      "main": [
+        [
+          {
+            "node": "Contact Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Ready?": {
+      "main": [
+        [
+          {
+            "node": "Read Back and Verify Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stored Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stored Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Respond Rejected or Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Immediate Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Opportunity Search, Create and ID Read-back": {
+      "main": [
+        [
+          {
+            "node": "Opportunity Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opportunity Ready?": {
+      "main": [
+        [
+          {
+            "node": "Native Workflow Watchdog",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Immediate Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Owner Alert": {
+      "main": [
+        [
+          {
+            "node": "Complete Idempotency Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Idempotency Ledger": {
+      "main": [
+        [
+          {
+            "node": "Respond Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Safe Dead Letter": {
+      "main": [
+        [
+          {
+            "node": "Action Needed Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action Needed Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond Dependency Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Back and Verify Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact Read-back Confirmed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Read-back Confirmed?": {
+      "main": [
+        [
+          {
+            "node": "GHL Opportunity Search, Create and ID Read-back",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Immediate Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Immediate Failure Alert": {
+      "main": [
+        [
+          {
+            "node": "Record Safe Dead Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Native Workflow Watchdog": {
+      "main": [
+        [
+          {
+            "node": "Native Workflow Evidence Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Native Workflow Evidence Found?": {
+      "main": [
+        [
+          {
+            "node": "Owner Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

@@ -1,0 +1,106 @@
+{
+  "runAt": "2026-10-26T18:39:58.535Z",
+  "n8nUrl": "http://127.0.0.1:5678",
+  "mockUrl": "http://127.0.0.1:3001",
+  "result": {
+    "passed": 5,
+    "total": 5
+  },
+  "scenarios": [
+    {
+      "name": "CSV attachment is parsed and appended",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": true,
+          "rowId": "invrow_4a679c57-881f-4bd5-a355-b9e52947acc0",
+          "invoiceNumber": "INV-CSV-1001",
+          "duplicate": false,
+          "overThreshold": false
+        },
+        "row": {
+          "rowId": "invrow_4a679c57-881f-4bd5-a355-b9e52947acc0",
+          "createdAt": "2026-10-26T18:39:56.314Z",
+          "invoiceNumber": "INV-CSV-1001",
+          "date": "2026-10-18",
+          "amount": 12500.5,
+          "vendor": "SYNTHETIC FIXTURE - Northstar Demo Office Supplies",
+          "sourceFile": "sample-invoice.csv",
+          "threshold": 50000,
+          "idempotencyKey": "invoice-email-0001",
+          "duplicate": false,
+          "overThreshold": false
+        }
+      }
+    },
+    {
+      "name": "PDF attachment is parsed and high amount is flagged",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": true,
+          "rowId": "invrow_2dea4b7a-78f4-4cd2-868f-ec2629504d94",
+          "invoiceNumber": "INV-PDF-2002",
+          "duplicate": false,
+          "overThreshold": true
+        },
+        "alertType": "invoice_review"
+      }
+    },
+    {
+      "name": "same vendor and invoice number is flagged as duplicate",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "rowId": "invrow_ccc0338f-e2c8-45c2-83ff-a270efba82ac",
+        "invoiceNumber": "INV-CSV-1001",
+        "duplicate": true,
+        "overThreshold": false
+      }
+    },
+    {
+      "name": "sheet write retries after a transient failure",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "rowId": "invrow_71a70a2f-c922-4880-8472-3602337f49ba",
+        "invoiceNumber": "INV-CSV-1001",
+        "duplicate": false,
+        "overThreshold": false
+      }
+    },
+    {
+      "name": "unparseable attachment is dead-lettered",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": false,
+          "error": "ATTACHMENT_PARSE_FAILED",
+          "details": [
+            {
+              "field": "attachment.fileName",
+              "message": "only CSV or PDF is accepted"
+            },
+            {
+              "field": "invoiceNumber",
+              "message": "not found"
+            },
+            {
+              "field": "date",
+              "message": "use YYYY-MM-DD"
+            },
+            {
+              "field": "vendor",
+              "message": "not found"
+            },
+            {
+              "field": "amount",
+              "message": "must be positive"
+            }
+          ]
+        },
+        "deadLetters": 1
+      }
+    }
+  ]
+}

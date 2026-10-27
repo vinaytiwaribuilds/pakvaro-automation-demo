@@ -6,7 +6,8 @@
   "scripts": {
     "mock": "node app/server.js",
     "test": "node tests/run-tests.js",
-    "check": "node tests/check-artifacts.js"
+    "test:wall": "node tests/run-demo-wall.js",
+    "check": "node tests/check-artifacts.js && node tests/check-demo-wall.js"
   },
   "engines": {
     "node": ">=20"

@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-10-21T21:28:09.495153+00:00",
+  "source": "local n8n SQLite execution_entity",
+  "n8nDatabase": "[local n8n database path redacted]",
+  "latestPassingSuiteExpectedExecutions": 6,
+  "workflowExecutionCounts": {
+    "pakvaroEcommerceOrderFlow": 6
+  },
+  "executions": [
+    {
+      "id": 13,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.166",
+      "stoppedAt": "2026-10-21 21:27:58.279",
+      "finished": 1
+    },
+    {
+      "id": 14,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.336",
+      "stoppedAt": "2026-10-21 21:27:58.433",
+      "finished": 1
+    },
+    {
+      "id": 15,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.500",
+      "stoppedAt": "2026-10-21 21:27:58.580",
+      "finished": 1
+    },
+    {
+      "id": 16,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.638",
+      "stoppedAt": "2026-10-21 21:27:58.719",
+      "finished": 1
+    },
+    {
+      "id": 17,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.779",
+      "stoppedAt": "2026-10-21 21:27:59.866",
+      "finished": 1
+    },
+    {
+      "id": 18,
+      "workflowId": "pakvaroEcommerceOrderFlow",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:59.928",
+      "stoppedAt": "2026-10-21 21:27:59.982",
+      "finished": 1
+    }
+  ]
+}

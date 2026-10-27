@@ -35,13 +35,24 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/demo/workflows:ro
+      - ./demos:/demo/demos:ro
     command:
       - /bin/sh
       - -c
       - >-
         n8n import:workflow --input=/demo/workflows/error-handler.workflow.json &&
         n8n import:workflow --input=/demo/workflows/lead-intake.workflow.json &&
+        n8n import:workflow --input=/demo/demos/missed-enquiry-rescue/workflow.json &&
+        n8n import:workflow --input=/demo/demos/invoice-email-intake/workflow.json &&
+        n8n import:workflow --input=/demo/demos/ecommerce-order-flow/workflow.json &&
+        n8n import:workflow --input=/demo/demos/crm-lead-routing/workflow.json &&
+        n8n import:workflow --input=/demo/demos/crm-lead-routing/daily-summary.workflow.json &&
         n8n update:workflow --id=pakvaroLeadIntakeDemo --active=true &&
+        n8n update:workflow --id=pakvaroMissedEnquiryRescue --active=true &&
+        n8n update:workflow --id=pakvaroInvoiceEmailIntake --active=true &&
+        n8n update:workflow --id=pakvaroEcommerceOrderFlow --active=true &&
+        n8n update:workflow --id=pakvaroCrmLeadRouting --active=true &&
+        n8n update:workflow --id=pakvaroCrmDailySummary --active=true &&
         n8n start
 
 volumes:

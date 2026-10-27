@@ -1,0 +1,10 @@
+Demo: ecommerce-order-flow
+n8n: http://127.0.0.1:5678
+Mocks: http://127.0.0.1:3001
+PASS valid order creates fulfilment and customer notification
+PASS low remaining quantity sends stock alert
+PASS duplicate order does not decrement or notify twice
+PASS customer notification retries after a transient failure
+PASS insufficient stock is dead-lettered
+
+Result: 5/5 tests passed

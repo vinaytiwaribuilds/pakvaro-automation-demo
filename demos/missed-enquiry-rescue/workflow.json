@@ -1,0 +1,223 @@
+{
+  "id": "pakvaroMissedEnquiryRescue",
+  "name": "Pakvaro Demo - Missed Enquiry Rescue",
+  "versionId": "20000000-0000-4000-8000-000000000001",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "missed-enquiry-rescue", "responseMode": "responseNode", "options": {} },
+      "id": "21000000-0000-4000-8000-000000000001",
+      "name": "Enquiry or Missed Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1320, 180],
+      "webhookId": "21000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = $json; const input = envelope.body && typeof envelope.body === 'object' ? envelope.body : envelope; const headers = envelope.headers || {}; const errors = []; const clean = (v) => typeof v === 'string' ? v.trim() : ''; const eventType = clean(input.eventType); const customerName = clean(input.customerName); const phone = clean(input.phone).replace(/[\\s()-]/g, ''); if (!['enquiry','missed_call'].includes(eventType)) errors.push({ field: 'eventType', message: 'use enquiry or missed_call' }); if (customerName.length < 2) errors.push({ field: 'customerName', message: 'customerName is required' }); if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) errors.push({ field: 'phone', message: 'phone must be international format' }); const key = clean(headers['x-idempotency-key']) || clean(input.eventId); if (!/^[A-Za-z0-9._:-]{8,100}$/.test(key)) errors.push({ field: 'idempotencyKey', message: 'supply an 8 to 100 character eventId or header' }); if (errors.length) return [{ json: { valid: false, response: { ok: false, error: 'VALIDATION_ERROR', details: errors } } }]; return [{ json: { valid: true, idempotencyKey: key, inquiry: { eventType, customerName, phone, message: clean(input.message) || null } } }];"
+      },
+      "id": "21000000-0000-4000-8000-000000000002",
+      "name": "Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1100, 180]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "21000000-0000-4000-8000-000000000003",
+      "name": "Event Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-880, 180]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 400 } },
+      "id": "21000000-0000-4000-8000-000000000004",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-640, 400]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/messages/acknowledgements' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { ...$json.inquiry, channel: 'simulated_whatsapp', text: `Thanks ${$json.inquiry.customerName}. We received your ${$json.inquiry.eventType === 'missed_call' ? 'missed call' : 'enquiry'} and will reply shortly.` } }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "21000000-0000-4000-8000-000000000005",
+      "name": "Send Acknowledgement Attempt 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-640, 80]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 1, idempotencyKey: b.idempotencyKey, inquiry: b.input || {}, acknowledgement: b.record || null, lastStatus: status } }];" },
+      "id": "21000000-0000-4000-8000-000000000006",
+      "name": "Evaluate Acknowledgement 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 80]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "ack-one", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "21000000-0000-4000-8000-000000000007",
+      "name": "Acknowledged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-180, 80]
+    },
+    {
+      "parameters": { "amount": 1 },
+      "id": "21000000-0000-4000-8000-000000000008",
+      "name": "Retry Backoff 1 Second",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [40, 260],
+      "webhookId": "21000000-0000-4000-8000-000000000008"
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/messages/acknowledgements' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.inquiry }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "21000000-0000-4000-8000-000000000009",
+      "name": "Send Acknowledgement Attempt 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 260]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 2, idempotencyKey: b.idempotencyKey, inquiry: b.input || {}, acknowledgement: b.record || null, lastStatus: status } }];" },
+      "id": "21000000-0000-4000-8000-000000000010",
+      "name": "Evaluate Acknowledgement 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 260]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "ack-two", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "21000000-0000-4000-8000-000000000011",
+      "name": "Acknowledged After Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, 260]
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { idempotencyKey: $json.idempotencyKey, deadLetter: { demo: 'missed-enquiry-rescue', reason: 'ACKNOWLEDGEMENT_FAILED', attempts: $json.attempt, lastStatus: $json.lastStatus, inquiry: $json.inquiry, workflowResponse: { ok: false, error: 'ACKNOWLEDGEMENT_FAILED', attempts: $json.attempt, idempotencyKey: $json.idempotencyKey } } } }];" },
+      "id": "21000000-0000-4000-8000-000000000012",
+      "name": "Prepare Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 440]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "21000000-0000-4000-8000-000000000013",
+      "name": "Record Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 440]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 502 } },
+      "id": "21000000-0000-4000-8000-000000000014",
+      "name": "Respond Delivery Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1360, 440]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/inquiries/owner-alerts' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { type: 'owner_alert', idempotencyKey: $json.idempotencyKey, inquiry: $json.inquiry, acknowledgementId: $json.acknowledgement.messageId } }}", "options": {} },
+      "id": "21000000-0000-4000-8000-000000000015",
+      "name": "Alert Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [40, -100]
+    },
+    {
+      "parameters": { "amount": 1 },
+      "id": "21000000-0000-4000-8000-000000000016",
+      "name": "Wait Test Interval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [260, -100],
+      "webhookId": "21000000-0000-4000-8000-000000000016"
+    },
+    {
+      "parameters": { "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/inquiries/reply-status?idempotencyKey=' + $json.idempotencyKey }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "options": {} },
+      "id": "21000000-0000-4000-8000-000000000017",
+      "name": "Check for Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, -100]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "replied", "leftValue": "={{ $json.replied }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "21000000-0000-4000-8000-000000000018",
+      "name": "Customer Replied?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, -100]
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { response: { ok: true, idempotencyKey: $json.idempotencyKey, acknowledged: true, ownerAlerted: true, replied: true, reminderCreated: false } } }];" },
+      "id": "21000000-0000-4000-8000-000000000019",
+      "name": "Prepare Replied Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, -220]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 200 } },
+      "id": "21000000-0000-4000-8000-000000000020",
+      "name": "Respond Replied",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1360, -220]
+    },
+    {
+      "parameters": { "jsCode": "const response = { ok: true, idempotencyKey: $json.idempotencyKey, acknowledged: true, ownerAlerted: true, replied: false, reminderCreated: true }; return [{ json: { idempotencyKey: $json.idempotencyKey, reminder: { type: 'no_reply_follow_up', dueAfterSeconds: 1, workflowResponse: response } } }];" },
+      "id": "21000000-0000-4000-8000-000000000021",
+      "name": "Prepare Follow-up Reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 20]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/inquiries/reminders' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.reminder }}", "options": {} },
+      "id": "21000000-0000-4000-8000-000000000022",
+      "name": "Create Follow-up Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 20]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 200 } },
+      "id": "21000000-0000-4000-8000-000000000023",
+      "name": "Respond Reminder Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1360, 20]
+    }
+  ],
+  "connections": {
+    "Enquiry or Missed Call": { "main": [[{ "node": "Validate Event", "type": "main", "index": 0 }]] },
+    "Validate Event": { "main": [[{ "node": "Event Valid?", "type": "main", "index": 0 }]] },
+    "Event Valid?": { "main": [[{ "node": "Send Acknowledgement Attempt 1", "type": "main", "index": 0 }], [{ "node": "Respond Invalid", "type": "main", "index": 0 }]] },
+    "Send Acknowledgement Attempt 1": { "main": [[{ "node": "Evaluate Acknowledgement 1", "type": "main", "index": 0 }]] },
+    "Evaluate Acknowledgement 1": { "main": [[{ "node": "Acknowledged?", "type": "main", "index": 0 }]] },
+    "Acknowledged?": { "main": [[{ "node": "Alert Owner", "type": "main", "index": 0 }], [{ "node": "Retry Backoff 1 Second", "type": "main", "index": 0 }]] },
+    "Retry Backoff 1 Second": { "main": [[{ "node": "Send Acknowledgement Attempt 2", "type": "main", "index": 0 }]] },
+    "Send Acknowledgement Attempt 2": { "main": [[{ "node": "Evaluate Acknowledgement 2", "type": "main", "index": 0 }]] },
+    "Evaluate Acknowledgement 2": { "main": [[{ "node": "Acknowledged After Retry?", "type": "main", "index": 0 }]] },
+    "Acknowledged After Retry?": { "main": [[{ "node": "Alert Owner", "type": "main", "index": 0 }], [{ "node": "Prepare Dead Letter", "type": "main", "index": 0 }]] },
+    "Prepare Dead Letter": { "main": [[{ "node": "Record Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Dead Letter": { "main": [[{ "node": "Respond Delivery Failed", "type": "main", "index": 0 }]] },
+    "Alert Owner": { "main": [[{ "node": "Wait Test Interval", "type": "main", "index": 0 }]] },
+    "Wait Test Interval": { "main": [[{ "node": "Check for Reply", "type": "main", "index": 0 }]] },
+    "Check for Reply": { "main": [[{ "node": "Customer Replied?", "type": "main", "index": 0 }]] },
+    "Customer Replied?": { "main": [[{ "node": "Prepare Replied Result", "type": "main", "index": 0 }], [{ "node": "Prepare Follow-up Reminder", "type": "main", "index": 0 }]] },
+    "Prepare Replied Result": { "main": [[{ "node": "Respond Replied", "type": "main", "index": 0 }]] },
+    "Prepare Follow-up Reminder": { "main": [[{ "node": "Create Follow-up Reminder", "type": "main", "index": 0 }]] },
+    "Create Follow-up Reminder": { "main": [[{ "node": "Respond Reminder Created", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "pakvaroDemoErrorHandler" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

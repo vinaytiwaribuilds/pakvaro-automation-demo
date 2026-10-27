@@ -1,0 +1,13 @@
+HighLevel sandbox smoke (redacted)
+Run date: 2026-10-23T18:45:56.329Z
+Label: PAKVARO SYNTHETIC SANDBOX SMOKE 1792781152637-075591
+Contact: [created-and-redacted]
+Opportunity: [created-and-redacted]
+Verified: true
+Opportunity cleanup: deleted
+Contact cleanup: deleted
+Token: [REDACTED]
+Location: [REDACTED]
+Pipeline: [REDACTED]
+Stage: [REDACTED]
+Result: PASS

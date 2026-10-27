@@ -1,0 +1,51 @@
+{
+  "id": "pakvaroCrmDailySummary",
+  "name": "Pakvaro Demo - CRM Daily Summary",
+  "versionId": "52000000-0000-4000-8000-000000000001",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "crm-daily-summary", "responseMode": "lastNode", "options": {} },
+      "id": "52000000-0000-4000-8000-000000000001",
+      "name": "Summary Test Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-560, 60],
+      "webhookId": "52000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 18 * * *" }] } },
+      "id": "52000000-0000-4000-8000-000000000002",
+      "name": "Daily at 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-560, 220]
+    },
+    {
+      "parameters": { "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/demo-summary' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "options": {} },
+      "id": "52000000-0000-4000-8000-000000000003",
+      "name": "Build Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-300, 140]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/daily-summaries' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { type: 'crm_daily_summary', date: $json.date, total: $json.total, byOwner: $json.byOwner, workflowResponse: { ok: true, date: $json.date, total: $json.total, byOwner: $json.byOwner } } }}", "options": {} },
+      "id": "52000000-0000-4000-8000-000000000004",
+      "name": "Send Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-60, 140]
+    }
+  ],
+  "connections": {
+    "Summary Test Webhook": { "main": [[{ "node": "Build Daily Summary", "type": "main", "index": 0 }]] },
+    "Daily at 18:00": { "main": [[{ "node": "Build Daily Summary", "type": "main", "index": 0 }]] },
+    "Build Daily Summary": { "main": [[{ "node": "Send Daily Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "Asia/Kolkata", "errorWorkflow": "pakvaroDemoErrorHandler" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

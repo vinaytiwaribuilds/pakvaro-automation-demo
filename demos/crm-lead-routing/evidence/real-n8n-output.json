@@ -1,0 +1,92 @@
+{
+  "runAt": "2026-10-26T18:40:05.145Z",
+  "n8nUrl": "http://127.0.0.1:5678",
+  "mockUrl": "http://127.0.0.1:3001",
+  "result": {
+    "passed": 5,
+    "total": 5
+  },
+  "scenarios": [
+    {
+      "name": "business-hours leads are assigned round-robin",
+      "status": "passed",
+      "output": {
+        "first": {
+          "ok": true,
+          "duplicate": false,
+          "crmId": "routelead_615bc385-3f73-4419-ab81-ee820a49f465",
+          "owner": "owner-a",
+          "businessHours": true
+        },
+        "second": {
+          "ok": true,
+          "duplicate": false,
+          "crmId": "routelead_1bda4887-9bb8-4ba4-a7d8-060021c48c5d",
+          "owner": "owner-b",
+          "businessHours": true
+        }
+      }
+    },
+    {
+      "name": "outside business hours routes to the after-hours queue",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "duplicate": false,
+        "crmId": "routelead_519907ae-9d5c-49df-9715-08088e4dd85f",
+        "owner": "after-hours-queue",
+        "businessHours": false
+      }
+    },
+    {
+      "name": "duplicate lead keeps one assignment, CRM record and notification",
+      "status": "passed",
+      "output": {
+        "owner": "owner-a",
+        "assignments": 1,
+        "records": 1,
+        "notifications": 1
+      }
+    },
+    {
+      "name": "daily summary reports totals by owner",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "date": "2026-10-26",
+        "total": 3,
+        "byOwner": {
+          "owner-a": 1,
+          "owner-b": 1,
+          "after-hours-queue": 1
+        }
+      }
+    },
+    {
+      "name": "invalid lead is rejected before routing",
+      "status": "passed",
+      "output": {
+        "ok": false,
+        "error": "VALIDATION_ERROR",
+        "details": [
+          {
+            "field": "name",
+            "message": "name is required"
+          },
+          {
+            "field": "email",
+            "message": "valid email required"
+          },
+          {
+            "field": "receivedAt",
+            "message": "ISO timestamp required"
+          },
+          {
+            "field": "leadId",
+            "message": "leadId must be 8 to 100 URL-safe characters"
+          }
+        ]
+      }
+    }
+  ]
+}

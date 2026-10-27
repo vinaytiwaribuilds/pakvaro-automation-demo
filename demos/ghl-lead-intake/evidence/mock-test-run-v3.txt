@@ -1,0 +1,22 @@
+Demo: ghl-lead-intake
+Run date: 2026-10-26T18:41:47.194Z
+n8n: http://127.0.0.1:5688
+Mock: http://127.0.0.1:3011
+Execution path: real local n8n production webhook
+PASS valid lead creates one normalised contact, opportunity and owner alert
+PASS invalid input returns field errors and causes no HighLevel calls
+PASS exact replay returns the stored result without duplicate writes
+PASS two 429 responses recover on the third contact upsert attempt
+PASS persistent 5xx creates one dead letter and one action-needed alert
+PASS authentication failure is surfaced without retry
+PASS opportunity is created in the configured pipeline and stage
+PASS ambiguous opportunity create is not repeated or reconciled through search
+PASS read-back after upsert detects a field silently ignored by the API
+PASS 403 scope failure sends one immediate alert without retry and retains the event
+PASS watchdog alerts and marks the event needs-review when the native workflow is Draft
+PASS workflow, state and captured output contain no credential values
+PASS camelCase opportunity-search query names receive the live-style 422 response
+PASS duplicate replay during search lag creates no second opportunity
+PASS contact and opportunity reads by ID succeed while search remains behind
+
+Result: 15/15 tests passed

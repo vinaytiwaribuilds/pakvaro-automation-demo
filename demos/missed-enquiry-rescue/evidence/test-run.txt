@@ -1,0 +1,10 @@
+Demo: missed-enquiry-rescue
+n8n: http://127.0.0.1:5678
+Mocks: http://127.0.0.1:3001
+PASS invalid event has no side effects
+PASS no reply creates acknowledgement, owner alert and reminder
+PASS recorded reply suppresses reminder
+PASS acknowledgement retries once after a transient failure
+PASS duplicate event does not duplicate actions
+
+Result: 5/5 tests passed

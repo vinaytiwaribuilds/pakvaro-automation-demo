@@ -1,5 +1,5 @@
 {
-  "runAt": "2026-10-21T20:44:42.520Z",
+  "runAt": "2026-10-26T18:39:44.529Z",
   "webhookUrl": "http://127.0.0.1:5678/webhook/lead-intake",
   "result": {
     "passed": 5,
@@ -49,7 +49,7 @@
       "status": "passed",
       "httpStatus": 200,
       "attempts": 3,
-      "elapsedMs": 3190,
+      "elapsedMs": 3234,
       "crmLeads": 1,
       "alerts": [
         "lead_owner"

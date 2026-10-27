@@ -1,0 +1,95 @@
+{
+  "runAt": "2026-10-26T18:39:56.065Z",
+  "n8nUrl": "http://127.0.0.1:5678",
+  "mockUrl": "http://127.0.0.1:3001",
+  "result": {
+    "passed": 5,
+    "total": 5
+  },
+  "scenarios": [
+    {
+      "name": "invalid event has no side effects",
+      "status": "passed",
+      "output": {
+        "status": 400,
+        "body": {
+          "ok": false,
+          "error": "VALIDATION_ERROR",
+          "details": [
+            {
+              "field": "eventType",
+              "message": "use enquiry or missed_call"
+            },
+            {
+              "field": "customerName",
+              "message": "customerName is required"
+            },
+            {
+              "field": "phone",
+              "message": "phone must be international format"
+            },
+            {
+              "field": "idempotencyKey",
+              "message": "supply an 8 to 100 character eventId or header"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "no reply creates acknowledgement, owner alert and reminder",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": true,
+          "idempotencyKey": "missed-call-0001",
+          "acknowledged": true,
+          "ownerAlerted": true,
+          "replied": false,
+          "reminderCreated": true
+        },
+        "counts": {
+          "acks": 1,
+          "alerts": 1,
+          "reminders": 1
+        }
+      }
+    },
+    {
+      "name": "recorded reply suppresses reminder",
+      "status": "passed",
+      "output": {
+        "ok": true,
+        "idempotencyKey": "enquiry-event-0002",
+        "acknowledged": true,
+        "ownerAlerted": true,
+        "replied": true,
+        "reminderCreated": false
+      }
+    },
+    {
+      "name": "acknowledgement retries once after a transient failure",
+      "status": "passed",
+      "output": {
+        "response": {
+          "ok": true,
+          "idempotencyKey": "missed-retry-0001",
+          "acknowledged": true,
+          "ownerAlerted": true,
+          "replied": false,
+          "reminderCreated": true
+        },
+        "acknowledgements": 1
+      }
+    },
+    {
+      "name": "duplicate event does not duplicate actions",
+      "status": "passed",
+      "output": {
+        "acks": 1,
+        "ownerAlerts": 1,
+        "reminders": 1
+      }
+    }
+  ]
+}

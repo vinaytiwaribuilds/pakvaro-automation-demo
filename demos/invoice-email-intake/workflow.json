@@ -1,0 +1,204 @@
+{
+  "id": "pakvaroInvoiceEmailIntake",
+  "name": "Pakvaro Demo - Invoice Email Intake",
+  "versionId": "30000000-0000-4000-8000-000000000001",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "invoice-email-intake", "responseMode": "responseNode", "options": {} },
+      "id": "31000000-0000-4000-8000-000000000001",
+      "name": "Incoming Email",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1260, 160],
+      "webhookId": "31000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = $json; const input = envelope.body && typeof envelope.body === 'object' ? envelope.body : envelope; const headers = envelope.headers || {}; const errors = []; const attachment = input.attachment || {}; const fileName = typeof attachment.fileName === 'string' ? attachment.fileName.trim() : ''; const contentBase64 = typeof attachment.contentBase64 === 'string' ? attachment.contentBase64 : ''; const key = String(headers['x-idempotency-key'] || input.emailId || '').trim(); if (!/^[A-Za-z0-9._:-]{8,100}$/.test(key)) errors.push({ field: 'idempotencyKey', message: 'supply emailId or header' }); if (!/\\.(csv|pdf)$/i.test(fileName)) errors.push({ field: 'attachment.fileName', message: 'only CSV or PDF is accepted' }); let decoded = ''; try { decoded = Buffer.from(contentBase64, 'base64').toString(fileName.toLowerCase().endsWith('.pdf') ? 'latin1' : 'utf8'); } catch { errors.push({ field: 'attachment.contentBase64', message: 'invalid base64' }); } if (!decoded || Buffer.byteLength(decoded, 'latin1') > 1024 * 1024) errors.push({ field: 'attachment', message: 'attachment must contain 1 byte to 1 MiB' }); let invoiceNumber = '', date = '', vendor = '', amount = NaN; if (!errors.length && fileName.toLowerCase().endsWith('.csv')) { const lines = decoded.replace(/^\\uFEFF/, '').trim().split(/\\r?\\n/); if (lines.length >= 2) { const headersRow = lines[0].split(',').map(v => v.trim().toLowerCase()); const values = lines[1].split(',').map(v => v.trim()); const row = Object.fromEntries(headersRow.map((h, i) => [h, values[i] || ''])); invoiceNumber = row.invoicenumber || ''; date = row.date || ''; vendor = row.vendor || ''; amount = Number(row.amount); } } else if (!errors.length) { const take = (pattern) => (decoded.match(pattern) || [,''])[1].trim(); invoiceNumber = take(/Invoice Number:\\s*([A-Za-z0-9._-]+)/i); date = take(/Invoice Date:\\s*(\\d{4}-\\d{2}-\\d{2})/i); vendor = take(/Vendor:\\s*([^\\r\\n\\)]+)/i); amount = Number(take(/Amount:\\s*([0-9]+(?:\\.[0-9]{1,2})?)/i)); } if (!invoiceNumber) errors.push({ field: 'invoiceNumber', message: 'not found' }); if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || Number.isNaN(Date.parse(date + 'T00:00:00Z'))) errors.push({ field: 'date', message: 'use YYYY-MM-DD' }); if (!vendor) errors.push({ field: 'vendor', message: 'not found' }); if (!Number.isFinite(amount) || amount <= 0) errors.push({ field: 'amount', message: 'must be positive' }); if (errors.length) return [{ json: { valid: false, idempotencyKey: key || 'invalid-email', source: { emailId: input.emailId || null, fileName }, response: { ok: false, error: 'ATTACHMENT_PARSE_FAILED', details: errors } } }]; return [{ json: { valid: true, idempotencyKey: key, invoice: { invoiceNumber, date, amount, vendor, sourceFile: fileName, threshold: Number(input.reviewThreshold || 50000) } } }];"
+      },
+      "id": "31000000-0000-4000-8000-000000000002",
+      "name": "Validate and Parse Attachment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1040, 160]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "31000000-0000-4000-8000-000000000003",
+      "name": "Invoice Parsed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-820, 160]
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { deadLetter: { demo: 'invoice-email-intake', reason: 'ATTACHMENT_PARSE_FAILED', source: $json.source, idempotencyKey: $json.idempotencyKey, workflowResponse: $json.response } } }];" },
+      "id": "31000000-0000-4000-8000-000000000004",
+      "name": "Prepare Parse Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-600, 380]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "31000000-0000-4000-8000-000000000005",
+      "name": "Record Parse Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-360, 380]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 422 } },
+      "id": "31000000-0000-4000-8000-000000000006",
+      "name": "Respond Unprocessable",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-120, 380]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/sheet/invoices' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.invoice }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "31000000-0000-4000-8000-000000000007",
+      "name": "Append Invoice Attempt 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-600, 40]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 1, idempotencyKey: b.idempotencyKey, invoice: b.input || b.record || {}, result: b.workflowResponse || null, lastStatus: status } }];" },
+      "id": "31000000-0000-4000-8000-000000000008",
+      "name": "Evaluate Sheet Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-360, 40]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "sheet-one", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "31000000-0000-4000-8000-000000000009",
+      "name": "Sheet Write Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-120, 40]
+    },
+    {
+      "parameters": { "amount": 1 },
+      "id": "31000000-0000-4000-8000-000000000010",
+      "name": "Sheet Retry Backoff",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [100, 200],
+      "webhookId": "31000000-0000-4000-8000-000000000010"
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/sheet/invoices' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.invoice }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "31000000-0000-4000-8000-000000000011",
+      "name": "Append Invoice Attempt 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 200]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 2, idempotencyKey: b.idempotencyKey, invoice: b.input || b.record || {}, result: b.workflowResponse || null, lastStatus: status } }];" },
+      "id": "31000000-0000-4000-8000-000000000012",
+      "name": "Evaluate Sheet Attempt 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 200]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "sheet-two", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "31000000-0000-4000-8000-000000000013",
+      "name": "Sheet Write Recovered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [760, 200]
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { deadLetter: { demo: 'invoice-email-intake', reason: 'SHEET_WRITE_FAILED', attempts: $json.attempt, lastStatus: $json.lastStatus, invoice: $json.invoice, idempotencyKey: $json.idempotencyKey, workflowResponse: { ok: false, error: 'SHEET_WRITE_FAILED', attempts: $json.attempt, idempotencyKey: $json.idempotencyKey } } } }];" },
+      "id": "31000000-0000-4000-8000-000000000014",
+      "name": "Prepare Sheet Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 380]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "31000000-0000-4000-8000-000000000015",
+      "name": "Record Sheet Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 380]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 502 } },
+      "id": "31000000-0000-4000-8000-000000000016",
+      "name": "Respond Sheet Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1420, 380]
+    },
+    {
+      "parameters": { "jsCode": "const result = $json.result; return [{ json: { needsReview: Boolean(result.duplicate || result.overThreshold), response: result, alert: { type: 'invoice_review', title: result.duplicate ? 'Possible duplicate invoice' : 'Invoice exceeds review threshold', invoiceNumber: result.invoiceNumber, duplicate: result.duplicate, overThreshold: result.overThreshold, workflowResponse: result } } }];" },
+      "id": "31000000-0000-4000-8000-000000000017",
+      "name": "Apply Review Rules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [100, -80]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "review", "leftValue": "={{ $json.needsReview }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "31000000-0000-4000-8000-000000000018",
+      "name": "Review Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [320, -80]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.alert }}", "options": {} },
+      "id": "31000000-0000-4000-8000-000000000019",
+      "name": "Flag for Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, -180]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 200 } },
+      "id": "31000000-0000-4000-8000-000000000020",
+      "name": "Respond Flagged",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [760, -180]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 200 } },
+      "id": "31000000-0000-4000-8000-000000000021",
+      "name": "Respond Recorded",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [540, 20]
+    }
+  ],
+  "connections": {
+    "Incoming Email": { "main": [[{ "node": "Validate and Parse Attachment", "type": "main", "index": 0 }]] },
+    "Validate and Parse Attachment": { "main": [[{ "node": "Invoice Parsed?", "type": "main", "index": 0 }]] },
+    "Invoice Parsed?": { "main": [[{ "node": "Append Invoice Attempt 1", "type": "main", "index": 0 }], [{ "node": "Prepare Parse Dead Letter", "type": "main", "index": 0 }]] },
+    "Prepare Parse Dead Letter": { "main": [[{ "node": "Record Parse Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Parse Dead Letter": { "main": [[{ "node": "Respond Unprocessable", "type": "main", "index": 0 }]] },
+    "Append Invoice Attempt 1": { "main": [[{ "node": "Evaluate Sheet Attempt 1", "type": "main", "index": 0 }]] },
+    "Evaluate Sheet Attempt 1": { "main": [[{ "node": "Sheet Write Succeeded?", "type": "main", "index": 0 }]] },
+    "Sheet Write Succeeded?": { "main": [[{ "node": "Apply Review Rules", "type": "main", "index": 0 }], [{ "node": "Sheet Retry Backoff", "type": "main", "index": 0 }]] },
+    "Sheet Retry Backoff": { "main": [[{ "node": "Append Invoice Attempt 2", "type": "main", "index": 0 }]] },
+    "Append Invoice Attempt 2": { "main": [[{ "node": "Evaluate Sheet Attempt 2", "type": "main", "index": 0 }]] },
+    "Evaluate Sheet Attempt 2": { "main": [[{ "node": "Sheet Write Recovered?", "type": "main", "index": 0 }]] },
+    "Sheet Write Recovered?": { "main": [[{ "node": "Apply Review Rules", "type": "main", "index": 0 }], [{ "node": "Prepare Sheet Dead Letter", "type": "main", "index": 0 }]] },
+    "Prepare Sheet Dead Letter": { "main": [[{ "node": "Record Sheet Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Sheet Dead Letter": { "main": [[{ "node": "Respond Sheet Failed", "type": "main", "index": 0 }]] },
+    "Apply Review Rules": { "main": [[{ "node": "Review Needed?", "type": "main", "index": 0 }]] },
+    "Review Needed?": { "main": [[{ "node": "Flag for Review", "type": "main", "index": 0 }], [{ "node": "Respond Recorded", "type": "main", "index": 0 }]] },
+    "Flag for Review": { "main": [[{ "node": "Respond Flagged", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "pakvaroDemoErrorHandler" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

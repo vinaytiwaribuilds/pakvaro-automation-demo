@@ -12,7 +12,7 @@ Show the complete canvas, then point to the Error Trigger workflow tab.
 
 Run the valid-lead request with idempotency key `video-happy-0001`.
 
-Show the HTTP 200 response: `ok`, CRM ID, `duplicate: false`, score, qualification, and `attempts: 1`. Open the mock state and show the normalised lowercase email, `+91` phone, one CRM lead, and one `lead_owner` alert.
+Show the HTTP 200 response: `ok`, CRM ID, `duplicate: false`, score, qualification, and `attempts: 1`. Open the mock state and show the normalised lowercase email, fictional `+1 212 555 0101` phone, one CRM lead, and one `lead_owner` alert.
 
 ## 0:55–1:20 — invalid input
 

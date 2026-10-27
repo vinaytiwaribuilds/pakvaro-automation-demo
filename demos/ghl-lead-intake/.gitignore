@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.n8n*/
+.npm-cache*/
+evidence/private/
+npm-debug.log*

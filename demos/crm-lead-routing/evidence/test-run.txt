@@ -1,0 +1,10 @@
+Demo: crm-lead-routing
+n8n: http://127.0.0.1:5678
+Mocks: http://127.0.0.1:3001
+PASS business-hours leads are assigned round-robin
+PASS outside business hours routes to the after-hours queue
+PASS duplicate lead keeps one assignment, CRM record and notification
+PASS daily summary reports totals by owner
+PASS invalid lead is rejected before routing
+
+Result: 5/5 tests passed

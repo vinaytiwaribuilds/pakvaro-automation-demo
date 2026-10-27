@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-10-21T21:28:09.495153+00:00",
+  "source": "local n8n SQLite execution_entity",
+  "n8nDatabase": "[local n8n database path redacted]",
+  "latestPassingSuiteExpectedExecutions": 6,
+  "workflowExecutionCounts": {
+    "pakvaroInvoiceEmailIntake": 6
+  },
+  "executions": [
+    {
+      "id": 7,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:56.407",
+      "stoppedAt": "2026-10-21 21:27:56.479",
+      "finished": 1
+    },
+    {
+      "id": 8,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:56.535",
+      "stoppedAt": "2026-10-21 21:27:56.613",
+      "finished": 1
+    },
+    {
+      "id": 9,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:56.679",
+      "stoppedAt": "2026-10-21 21:27:56.731",
+      "finished": 1
+    },
+    {
+      "id": 10,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:56.795",
+      "stoppedAt": "2026-10-21 21:27:56.853",
+      "finished": 1
+    },
+    {
+      "id": 11,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:56.910",
+      "stoppedAt": "2026-10-21 21:27:57.987",
+      "finished": 1
+    },
+    {
+      "id": 12,
+      "workflowId": "pakvaroInvoiceEmailIntake",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:58.052",
+      "stoppedAt": "2026-10-21 21:27:58.103",
+      "finished": 1
+    }
+  ]
+}

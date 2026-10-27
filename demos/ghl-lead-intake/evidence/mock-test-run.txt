@@ -1,0 +1,15 @@
+Demo: ghl-lead-intake
+Run date: 2026-10-23T13:59:37.575Z
+n8n: http://127.0.0.1:5688
+Mock: http://127.0.0.1:3011
+Execution path: real local n8n production webhook
+PASS valid lead creates one normalised contact, opportunity and owner alert
+PASS invalid input returns field errors and causes no HighLevel calls
+PASS exact replay returns the stored result without duplicate writes
+PASS two 429 responses recover on the third contact upsert attempt
+PASS persistent 5xx creates one dead letter and one action-needed alert
+PASS authentication failure is surfaced without retry
+PASS opportunity is created in the configured pipeline and stage
+PASS workflow, state and captured output contain no credential values
+
+Result: 8/8 tests passed

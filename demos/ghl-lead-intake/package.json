@@ -1,0 +1,14 @@
+{
+  "name": "pakvaro-ghl-lead-intake-reference",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mock": "node mock/server.mjs",
+    "test": "node tests/run-tests.mjs",
+    "check": "node tests/check-artifacts.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

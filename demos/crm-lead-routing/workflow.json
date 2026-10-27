@@ -1,0 +1,121 @@
+{
+  "id": "pakvaroCrmLeadRouting",
+  "name": "Pakvaro Demo - CRM Lead Routing",
+  "versionId": "50000000-0000-4000-8000-000000000001",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "crm-lead-routing", "responseMode": "responseNode", "options": {} },
+      "id": "51000000-0000-4000-8000-000000000001",
+      "name": "Lead Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1020, 160],
+      "webhookId": "51000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": { "jsCode": "const envelope = $json; const input = envelope.body && typeof envelope.body === 'object' ? envelope.body : envelope; const headers = envelope.headers || {}; const errors = []; const clean = v => typeof v === 'string' ? v.trim() : ''; const name = clean(input.name); const email = clean(input.email).toLowerCase(); const receivedAt = clean(input.receivedAt); const key = clean(headers['x-idempotency-key']) || clean(input.leadId); if (name.length < 2) errors.push({ field: 'name', message: 'name is required' }); if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push({ field: 'email', message: 'valid email required' }); if (Number.isNaN(Date.parse(receivedAt))) errors.push({ field: 'receivedAt', message: 'ISO timestamp required' }); if (!/^[A-Za-z0-9._:-]{8,100}$/.test(key)) errors.push({ field: 'leadId', message: 'leadId must be 8 to 100 URL-safe characters' }); if (errors.length) return [{ json: { valid: false, response: { ok: false, error: 'VALIDATION_ERROR', details: errors } } }]; return [{ json: { valid: true, idempotencyKey: key, receivedAt, lead: { leadId: key, name, email, company: clean(input.company) || null, message: clean(input.message) || null } } }];" },
+      "id": "51000000-0000-4000-8000-000000000002",
+      "name": "Validate Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, 160]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "51000000-0000-4000-8000-000000000003",
+      "name": "Lead Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-580, 160]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 400 } },
+      "id": "51000000-0000-4000-8000-000000000004",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-360, 380]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/routing/assign' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { idempotencyKey: $json.idempotencyKey, receivedAt: $json.receivedAt, lead: $json.lead } }}", "options": {} },
+      "id": "51000000-0000-4000-8000-000000000005",
+      "name": "Round-robin with Business Hours",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-360, 40]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/crm/demo-leads' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { owner: $json.owner, businessHours: $json.businessHours, receivedAt: $json.receivedAt, lead: $json.lead } }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "51000000-0000-4000-8000-000000000006",
+      "name": "Create CRM Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-140, 40]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); if (!(status >= 200 && status < 300)) return [{ json: { saved: false, deadLetter: { demo: 'crm-lead-routing', reason: b.error || 'CRM_WRITE_FAILED', idempotencyKey: b.idempotencyKey, lead: b.input || null, workflowResponse: { ok: false, error: b.error || 'CRM_WRITE_FAILED', idempotencyKey: b.idempotencyKey } } } }]; const response = b.workflowResponse; return [{ json: { saved: true, response, alert: { type: 'routed_lead_owner', title: 'Lead assigned', owner: response.owner, crmId: response.crmId, businessHours: response.businessHours, workflowResponse: response } } }];" },
+      "id": "51000000-0000-4000-8000-000000000007",
+      "name": "Evaluate CRM Write",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [80, 40]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "saved", "leftValue": "={{ $json.saved }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "51000000-0000-4000-8000-000000000008",
+      "name": "CRM Saved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [300, 40]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ 'route-' + $json.response.crmId }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.alert }}", "options": {} },
+      "id": "51000000-0000-4000-8000-000000000009",
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, -80]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 200 } },
+      "id": "51000000-0000-4000-8000-000000000010",
+      "name": "Respond Routed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [740, -80]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "51000000-0000-4000-8000-000000000011",
+      "name": "Record CRM Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 180]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 502 } },
+      "id": "51000000-0000-4000-8000-000000000012",
+      "name": "Respond CRM Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [740, 180]
+    }
+  ],
+  "connections": {
+    "Lead Form Webhook": { "main": [[{ "node": "Validate Lead", "type": "main", "index": 0 }]] },
+    "Validate Lead": { "main": [[{ "node": "Lead Valid?", "type": "main", "index": 0 }]] },
+    "Lead Valid?": { "main": [[{ "node": "Round-robin with Business Hours", "type": "main", "index": 0 }], [{ "node": "Respond Invalid", "type": "main", "index": 0 }]] },
+    "Round-robin with Business Hours": { "main": [[{ "node": "Create CRM Record", "type": "main", "index": 0 }]] },
+    "Create CRM Record": { "main": [[{ "node": "Evaluate CRM Write", "type": "main", "index": 0 }]] },
+    "Evaluate CRM Write": { "main": [[{ "node": "CRM Saved?", "type": "main", "index": 0 }]] },
+    "CRM Saved?": { "main": [[{ "node": "Notify Owner", "type": "main", "index": 0 }], [{ "node": "Record CRM Dead Letter", "type": "main", "index": 0 }]] },
+    "Notify Owner": { "main": [[{ "node": "Respond Routed", "type": "main", "index": 0 }]] },
+    "Record CRM Dead Letter": { "main": [[{ "node": "Respond CRM Failed", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "pakvaroDemoErrorHandler" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

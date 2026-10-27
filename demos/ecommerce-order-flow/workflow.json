@@ -1,0 +1,228 @@
+{
+  "id": "pakvaroEcommerceOrderFlow",
+  "name": "Pakvaro Demo - E-commerce Order Flow",
+  "versionId": "40000000-0000-4000-8000-000000000001",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "ecommerce-order-flow", "responseMode": "responseNode", "options": {} },
+      "id": "41000000-0000-4000-8000-000000000001",
+      "name": "Order Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1320, 160],
+      "webhookId": "41000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": { "jsCode": "const envelope = $json; const input = envelope.body && typeof envelope.body === 'object' ? envelope.body : envelope; const headers = envelope.headers || {}; const errors = []; const clean = v => typeof v === 'string' ? v.trim() : ''; const orderId = clean(input.orderId); const sku = clean(input.sku).toUpperCase(); const quantity = Number(input.quantity); const customerEmail = clean(input.customerEmail).toLowerCase(); const key = clean(headers['x-idempotency-key']) || orderId; if (!/^[A-Za-z0-9._:-]{8,100}$/.test(key)) errors.push({ field: 'orderId', message: 'orderId must be 8 to 100 URL-safe characters' }); if (!/^SKU-[A-Z0-9-]{2,30}$/.test(sku)) errors.push({ field: 'sku', message: 'unknown SKU format' }); if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) errors.push({ field: 'quantity', message: 'quantity must be 1 to 100' }); if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)) errors.push({ field: 'customerEmail', message: 'valid email required' }); if (errors.length) return [{ json: { valid: false, response: { ok: false, error: 'VALIDATION_ERROR', details: errors } } }]; return [{ json: { valid: true, idempotencyKey: key, order: { orderId, sku, quantity, customerEmail, lowStockThreshold: Number(input.lowStockThreshold || 3) } } }];" },
+      "id": "41000000-0000-4000-8000-000000000002",
+      "name": "Validate Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1100, 160]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "41000000-0000-4000-8000-000000000003",
+      "name": "Order Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-880, 160]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 400 } },
+      "id": "41000000-0000-4000-8000-000000000004",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-660, 380]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/fulfilment' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.order }}", "options": {} },
+      "id": "41000000-0000-4000-8000-000000000005",
+      "name": "Create Fulfilment Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-660, 40]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/inventory/decrement' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { sku: $json.record.sku, quantity: $json.record.quantity, lowStockThreshold: $json.record.lowStockThreshold, order: $json.record } }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "41000000-0000-4000-8000-000000000006",
+      "name": "Decrement Inventory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-440, 40]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); if (!(status >= 200 && status < 300)) return [{ json: { stockOk: false, deadLetter: { demo: 'ecommerce-order-flow', reason: b.error || 'INVENTORY_UPDATE_FAILED', idempotencyKey: b.idempotencyKey, order: b.input?.order || b.input || null, workflowResponse: { ok: false, error: b.error || 'INVENTORY_UPDATE_FAILED', idempotencyKey: b.idempotencyKey } } } }]; const response = { ok: true, orderId: b.order.orderId, fulfilmentId: b.order.fulfilmentId, idempotencyKey: b.idempotencyKey, remainingStock: b.remaining, lowStock: b.lowStock }; return [{ json: { stockOk: true, idempotencyKey: b.idempotencyKey, notification: { type: 'order_confirmation', to: b.order.customerEmail, orderId: b.order.orderId, remainingStock: b.remaining, lowStock: b.lowStock, workflowResponse: response } } }];" },
+      "id": "41000000-0000-4000-8000-000000000007",
+      "name": "Evaluate Stock Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-200, 40]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "stock", "leftValue": "={{ $json.stockOk }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "41000000-0000-4000-8000-000000000008",
+      "name": "Stock Updated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [20, 40]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "41000000-0000-4000-8000-000000000009",
+      "name": "Record Stock Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 280]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 409 } },
+      "id": "41000000-0000-4000-8000-000000000010",
+      "name": "Respond Stock Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [460, 280]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/customer-notifications' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.notification }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "41000000-0000-4000-8000-000000000011",
+      "name": "Notify Customer Attempt 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, -80]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 1, idempotencyKey: b.idempotencyKey, notification: b.input || b.record || {}, response: b.workflowResponse || b.input?.workflowResponse || null, lastStatus: status } }];" },
+      "id": "41000000-0000-4000-8000-000000000012",
+      "name": "Evaluate Notification 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, -80]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "notify-one", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "41000000-0000-4000-8000-000000000013",
+      "name": "Customer Notified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, -80]
+    },
+    {
+      "parameters": { "amount": 1 },
+      "id": "41000000-0000-4000-8000-000000000014",
+      "name": "Notification Retry Backoff",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 100],
+      "webhookId": "41000000-0000-4000-8000-000000000014"
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/customer-notifications' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ $json.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.notification }}", "options": { "response": { "response": { "fullResponse": true, "neverError": true } } } },
+      "id": "41000000-0000-4000-8000-000000000015",
+      "name": "Notify Customer Attempt 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 100]
+    },
+    {
+      "parameters": { "jsCode": "const b = $json.body || {}; const status = Number($json.statusCode || 0); return [{ json: { success: status >= 200 && status < 300, attempt: 2, idempotencyKey: b.idempotencyKey, notification: b.input || b.record || {}, response: b.workflowResponse || b.input?.workflowResponse || null, lastStatus: status } }];" },
+      "id": "41000000-0000-4000-8000-000000000016",
+      "name": "Evaluate Notification 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "notify-two", "leftValue": "={{ $json.success }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "41000000-0000-4000-8000-000000000017",
+      "name": "Notification Recovered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1560, 100]
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { deadLetter: { demo: 'ecommerce-order-flow', reason: 'CUSTOMER_NOTIFICATION_FAILED', attempts: $json.attempt, lastStatus: $json.lastStatus, idempotencyKey: $json.idempotencyKey, notification: $json.notification, workflowResponse: { ok: false, error: 'CUSTOMER_NOTIFICATION_FAILED', attempts: $json.attempt, idempotencyKey: $json.idempotencyKey } } } }];" },
+      "id": "41000000-0000-4000-8000-000000000018",
+      "name": "Prepare Notification Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/dead-letters' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.deadLetter }}", "options": {} },
+      "id": "41000000-0000-4000-8000-000000000019",
+      "name": "Record Notification Dead Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 280]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 502 } },
+      "id": "41000000-0000-4000-8000-000000000020",
+      "name": "Respond Notification Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2220, 280]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "low", "leftValue": "={{ $json.response.lowStock }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} },
+      "id": "41000000-0000-4000-8000-000000000021",
+      "name": "Low Stock?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, -200]
+    },
+    {
+      "parameters": { "method": "POST", "url": "={{ ($env.MOCK_BASE_URL || 'http://127.0.0.1:3001') + '/alerts' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-demo-key", "value": "={{ $env.MOCK_API_KEY || 'demo-local-key' }}" }, { "name": "x-idempotency-key", "value": "={{ 'stock-' + $json.response.idempotencyKey }}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { type: 'low_stock', title: 'Stock below threshold', orderId: $json.response.orderId, remainingStock: $json.response.remainingStock, workflowResponse: $json.response } }}", "options": {} },
+      "id": "41000000-0000-4000-8000-000000000022",
+      "name": "Send Low-stock Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, -300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.workflowResponse }}", "options": { "responseCode": 200 } },
+      "id": "41000000-0000-4000-8000-000000000023",
+      "name": "Respond Low Stock",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1340, -300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json.response }}", "options": { "responseCode": 200 } },
+      "id": "41000000-0000-4000-8000-000000000024",
+      "name": "Respond Order Complete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1120, -100]
+    }
+  ],
+  "connections": {
+    "Order Webhook": { "main": [[{ "node": "Validate Order", "type": "main", "index": 0 }]] },
+    "Validate Order": { "main": [[{ "node": "Order Valid?", "type": "main", "index": 0 }]] },
+    "Order Valid?": { "main": [[{ "node": "Create Fulfilment Row", "type": "main", "index": 0 }], [{ "node": "Respond Invalid", "type": "main", "index": 0 }]] },
+    "Create Fulfilment Row": { "main": [[{ "node": "Decrement Inventory", "type": "main", "index": 0 }]] },
+    "Decrement Inventory": { "main": [[{ "node": "Evaluate Stock Update", "type": "main", "index": 0 }]] },
+    "Evaluate Stock Update": { "main": [[{ "node": "Stock Updated?", "type": "main", "index": 0 }]] },
+    "Stock Updated?": { "main": [[{ "node": "Notify Customer Attempt 1", "type": "main", "index": 0 }], [{ "node": "Record Stock Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Stock Dead Letter": { "main": [[{ "node": "Respond Stock Failed", "type": "main", "index": 0 }]] },
+    "Notify Customer Attempt 1": { "main": [[{ "node": "Evaluate Notification 1", "type": "main", "index": 0 }]] },
+    "Evaluate Notification 1": { "main": [[{ "node": "Customer Notified?", "type": "main", "index": 0 }]] },
+    "Customer Notified?": { "main": [[{ "node": "Low Stock?", "type": "main", "index": 0 }], [{ "node": "Notification Retry Backoff", "type": "main", "index": 0 }]] },
+    "Notification Retry Backoff": { "main": [[{ "node": "Notify Customer Attempt 2", "type": "main", "index": 0 }]] },
+    "Notify Customer Attempt 2": { "main": [[{ "node": "Evaluate Notification 2", "type": "main", "index": 0 }]] },
+    "Evaluate Notification 2": { "main": [[{ "node": "Notification Recovered?", "type": "main", "index": 0 }]] },
+    "Notification Recovered?": { "main": [[{ "node": "Low Stock?", "type": "main", "index": 0 }], [{ "node": "Prepare Notification Dead Letter", "type": "main", "index": 0 }]] },
+    "Prepare Notification Dead Letter": { "main": [[{ "node": "Record Notification Dead Letter", "type": "main", "index": 0 }]] },
+    "Record Notification Dead Letter": { "main": [[{ "node": "Respond Notification Failed", "type": "main", "index": 0 }]] },
+    "Low Stock?": { "main": [[{ "node": "Send Low-stock Alert", "type": "main", "index": 0 }], [{ "node": "Respond Order Complete", "type": "main", "index": 0 }]] },
+    "Send Low-stock Alert": { "main": [[{ "node": "Respond Low Stock", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "pakvaroDemoErrorHandler" },
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-10-21T21:28:09.495153+00:00",
+  "source": "local n8n SQLite execution_entity",
+  "n8nDatabase": "[local n8n database path redacted]",
+  "latestPassingSuiteExpectedExecutions": 6,
+  "workflowExecutionCounts": {
+    "pakvaroMissedEnquiryRescue": 6
+  },
+  "executions": [
+    {
+      "id": 1,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:49.084",
+      "stoppedAt": "2026-10-21 21:27:49.182",
+      "finished": 1
+    },
+    {
+      "id": 2,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:49.267",
+      "stoppedAt": "2026-10-21 21:27:50.667",
+      "finished": 1
+    },
+    {
+      "id": 3,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:50.731",
+      "stoppedAt": "2026-10-21 21:27:51.814",
+      "finished": 1
+    },
+    {
+      "id": 4,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:51.880",
+      "stoppedAt": "2026-10-21 21:27:54.004",
+      "finished": 1
+    },
+    {
+      "id": 5,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:54.068",
+      "stoppedAt": "2026-10-21 21:27:55.158",
+      "finished": 1
+    },
+    {
+      "id": 6,
+      "workflowId": "pakvaroMissedEnquiryRescue",
+      "status": "success",
+      "mode": "webhook",
+      "startedAt": "2026-10-21 21:27:55.236",
+      "stoppedAt": "2026-10-21 21:27:56.339",
+      "finished": 1
+    }
+  ]
+}
