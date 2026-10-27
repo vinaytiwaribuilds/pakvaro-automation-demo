@@ -1,0 +1,2 @@
+# Keep binary fixtures byte-identical on every platform
+*.pdf binary
